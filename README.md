@@ -2,7 +2,7 @@
 
 App web de portafolio personal: gestión de posiciones, analítica, backtesting de estrategias, simulación de escenarios y alertas.
 
-> **Estado:** diseño completo (fase de brainstorming). Sin código aún — próximo paso: plan de implementación + scaffolding.
+> **Estado:** Fase 1 implementada (fundación + Portfolio Manager). Roadmap en [docs/superpowers/plans/ROADMAP.md](docs/superpowers/plans/ROADMAP.md).
 > Reubicado desde `OneDrive\Personal\00_Proyectos\03_Bet_Martingala` el 2026-06-11 (OneDrive no es apto para proyectos Node/Next.js).
 
 ## Stack
