@@ -1,0 +1,99 @@
+<h2>Revisión del Diseño UI</h2>
+<p class="subtitle">Lo que está muy bien + 3 mejoras sugeridas</p>
+
+<div class="section">
+  <h3 style="color:#4ade80;">✓ Lo que está excelente</h3>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:12px;">
+    <div style="background:#1a2e1a;border:1px solid #22c55e;border-radius:8px;padding:14px;">
+      <div style="color:#4ade80;font-weight:bold;margin-bottom:6px;">Dark theme financiero</div>
+      <div style="color:#94a3b8;font-size:13px;">Apropiado para datos financieros. Reduce fatiga visual en sesiones largas de análisis.</div>
+    </div>
+    <div style="background:#1a2e1a;border:1px solid #22c55e;border-radius:8px;padding:14px;">
+      <div style="color:#4ade80;font-weight:bold;margin-bottom:6px;">Sidebar con todos los módulos</div>
+      <div style="color:#94a3b8;font-size:13px;">La navegación refleja exactamente los 6 módulos del sistema. Coherente con la arquitectura.</div>
+    </div>
+    <div style="background:#1a2e1a;border:1px solid #22c55e;border-radius:8px;padding:14px;">
+      <div style="color:#4ade80;font-weight:bold;margin-bottom:6px;">Estado de fuentes de datos</div>
+      <div style="color:#94a3b8;font-size:13px;">Mostrar Yahoo/CoinGecko/Alpha Vantage OK o ERROR en tiempo real es esencial para confiar en los datos.</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3 style="color:#fb923c;">⚡ 3 Mejoras sugeridas</h3>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:12px;">
+
+    <div style="background:#2d1a1a;border:1px solid #f97316;border-radius:8px;padding:14px;">
+      <div style="color:#fb923c;font-weight:bold;margin-bottom:6px;">1. KPI cards en la parte superior</div>
+      <div style="color:#94a3b8;font-size:13px;margin-bottom:10px;">Agrega 4 tarjetas antes de los gráficos: Valor Total, P&L Hoy, Retorno Total, y # de activos. Lo primero que quieres ver al abrir la app.</div>
+      <div style="background:#1a1a1a;border-radius:6px;padding:10px;font-size:11px;font-family:monospace;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+          <div style="background:#1e3a5f;padding:6px;border-radius:4px;text-align:center;">
+            <div style="color:#60a5fa;font-size:10px;">VALOR TOTAL</div>
+            <div style="color:#fff;font-weight:bold;">$24,580</div>
+          </div>
+          <div style="background:#1a2e1a;padding:6px;border-radius:4px;text-align:center;">
+            <div style="color:#4ade80;font-size:10px;">P&L HOY</div>
+            <div style="color:#4ade80;font-weight:bold;">+$320</div>
+          </div>
+          <div style="background:#1a2e1a;padding:6px;border-radius:4px;text-align:center;">
+            <div style="color:#4ade80;font-size:10px;">RETORNO TOTAL</div>
+            <div style="color:#4ade80;font-weight:bold;">+18.4%</div>
+          </div>
+          <div style="background:#1e1e3a;padding:6px;border-radius:4px;text-align:center;">
+            <div style="color:#a5b4fc;font-size:10px;">ACTIVOS</div>
+            <div style="color:#fff;font-weight:bold;">12</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="background:#2d1a1a;border:1px solid #f97316;border-radius:8px;padding:14px;">
+      <div style="color:#fb923c;font-weight:bold;margin-bottom:6px;">2. Backtesting y Escenarios en páginas propias</div>
+      <div style="color:#94a3b8;font-size:13px;margin-bottom:10px;">El dashboard está muy denso. Los paneles de Backtesting y What-If son herramientas de análisis profundo — merecen su propia página completa, no un widget pequeño.</div>
+      <div style="background:#1a1a1a;border-radius:6px;padding:10px;font-size:12px;">
+        <div style="color:#64748b;margin-bottom:6px;">Dashboard mantiene:</div>
+        <div style="color:#94a3b8;">✓ KPI cards</div>
+        <div style="color:#94a3b8;">✓ Gráfica de rendimiento</div>
+        <div style="color:#94a3b8;">✓ Distribución de activos</div>
+        <div style="color:#94a3b8;">✓ Tabla de posiciones</div>
+        <div style="color:#64748b;margin-top:8px;margin-bottom:6px;">Se mueven a su página:</div>
+        <div style="color:#fb923c;">→ Backtesting completo</div>
+        <div style="color:#fb923c;">→ Simulaciones What-If</div>
+      </div>
+    </div>
+
+    <div style="background:#2d1a1a;border:1px solid #f97316;border-radius:8px;padding:14px;">
+      <div style="color:#fb923c;font-weight:bold;margin-bottom:6px;">3. Selector de período global</div>
+      <div style="color:#94a3b8;font-size:13px;margin-bottom:10px;">Un filtro de tiempo en la barra superior (1S · 1M · 3M · 1A · Todo) que afecte todas las gráficas del dashboard simultáneamente.</div>
+      <div style="background:#1a1a1a;border-radius:6px;padding:10px;font-size:12px;">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <span style="background:#1e3a5f;color:#60a5fa;padding:4px 10px;border-radius:20px;font-size:11px;">1S</span>
+          <span style="background:#1e3a5f;color:#60a5fa;padding:4px 10px;border-radius:20px;font-size:11px;">1M</span>
+          <span style="background:#3b82f6;color:#fff;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:bold;">3M</span>
+          <span style="background:#1e3a5f;color:#60a5fa;padding:4px 10px;border-radius:20px;font-size:11px;">1A</span>
+          <span style="background:#1e3a5f;color:#60a5fa;padding:4px 10px;border-radius:20px;font-size:11px;">Todo</span>
+        </div>
+        <div style="color:#64748b;font-size:11px;margin-top:8px;">Afecta: gráfica de rendimiento, P&L, tabla de activos</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="section" style="background:#1e1e3a;border-radius:8px;padding:16px;border:1px solid #818cf8;">
+  <h3 style="color:#a5b4fc;margin-bottom:8px;">Estructura de páginas propuesta</h3>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">
+    <div style="color:#e2e8f0;"><span style="color:#60a5fa;">/dashboard</span> — KPIs + rendimiento + distribución + posiciones</div>
+    <div style="color:#e2e8f0;"><span style="color:#60a5fa;">/portfolio</span> — gestión completa de posiciones y transacciones</div>
+    <div style="color:#e2e8f0;"><span style="color:#60a5fa;">/analytics</span> — métricas avanzadas, benchmarks, correlaciones</div>
+    <div style="color:#e2e8f0;"><span style="color:#60a5fa;">/backtest</span> — probador de estrategias completo</div>
+    <div style="color:#e2e8f0;"><span style="color:#60a5fa;">/scenarios</span> — simulaciones what-if y estrés</div>
+    <div style="color:#e2e8f0;"><span style="color:#60a5fa;">/alerts</span> — centro de alertas</div>
+    <div style="color:#e2e8f0;"><span style="color:#60a5fa;">/data-sources</span> — fuentes de datos y entrada manual</div>
+    <div style="color:#e2e8f0;"><span style="color:#60a5fa;">/settings</span> — configuración de cuenta</div>
+  </div>
+</div>
+
+<p class="subtitle" style="text-align:center;margin-top:16px;">¿Estás de acuerdo con estas mejoras? Responde en el terminal.</p>

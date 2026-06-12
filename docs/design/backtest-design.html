@@ -1,0 +1,95 @@
+<h2>Diseño: Backtesting Engine</h2>
+<p class="subtitle">Cómo los usuarios definen y prueban estrategias de inversión</p>
+
+<div class="section">
+  <h3>Flujo de trabajo</h3>
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;">
+    <div style="background:#1e3a5f;border:1px solid #3b82f6;border-radius:8px;padding:12px 16px;text-align:center;min-width:110px;">
+      <div style="color:#60a5fa;font-size:11px;text-transform:uppercase;margin-bottom:4px;">Paso 1</div>
+      <div style="color:#fff;font-weight:bold;font-size:13px;">Definir Estrategia</div>
+      <div style="color:#64748b;font-size:11px;margin-top:4px;">Reglas + activos + parámetros</div>
+    </div>
+    <div style="color:#475569;font-size:20px;">→</div>
+    <div style="background:#1e3a5f;border:1px solid #3b82f6;border-radius:8px;padding:12px 16px;text-align:center;min-width:110px;">
+      <div style="color:#60a5fa;font-size:11px;text-transform:uppercase;margin-bottom:4px;">Paso 2</div>
+      <div style="color:#fff;font-weight:bold;font-size:13px;">Seleccionar Período</div>
+      <div style="color:#64748b;font-size:11px;margin-top:4px;">Fecha inicio → fin</div>
+    </div>
+    <div style="color:#475569;font-size:20px;">→</div>
+    <div style="background:#1e3a5f;border:1px solid #3b82f6;border-radius:8px;padding:12px 16px;text-align:center;min-width:110px;">
+      <div style="color:#60a5fa;font-size:11px;text-transform:uppercase;margin-bottom:4px;">Paso 3</div>
+      <div style="color:#fff;font-weight:bold;font-size:13px;">Ejecutar</div>
+      <div style="color:#64748b;font-size:11px;margin-top:4px;">Datos históricos vía API</div>
+    </div>
+    <div style="color:#475569;font-size:20px;">→</div>
+    <div style="background:#1a2e1a;border:1px solid #22c55e;border-radius:8px;padding:12px 16px;text-align:center;min-width:110px;">
+      <div style="color:#4ade80;font-size:11px;text-transform:uppercase;margin-bottom:4px;">Paso 4</div>
+      <div style="color:#fff;font-weight:bold;font-size:13px;">Ver Resultados</div>
+      <div style="color:#64748b;font-size:11px;margin-top:4px;">Métricas + gráficas</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Estrategias disponibles (reglas predefinidas)</h3>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
+
+    <div style="background:#1e1e3a;border:1px solid #818cf8;border-radius:8px;padding:14px;">
+      <div style="color:#a5b4fc;font-weight:bold;margin-bottom:8px;">📈 Momentum / Tendencia</div>
+      <div style="color:#e2e8f0;font-size:13px;margin-bottom:6px;"><span style="color:#64748b;">•</span> SMA Crossover (50/200 días)</div>
+      <div style="color:#e2e8f0;font-size:13px;margin-bottom:6px;"><span style="color:#64748b;">•</span> RSI sobrecompra/sobreventa</div>
+      <div style="color:#e2e8f0;font-size:13px;"><span style="color:#64748b;">•</span> Ruptura de máximos</div>
+    </div>
+
+    <div style="background:#1e1e3a;border:1px solid #818cf8;border-radius:8px;padding:14px;">
+      <div style="color:#a5b4fc;font-weight:bold;margin-bottom:8px;">⚖️ Rebalanceo Periódico</div>
+      <div style="color:#e2e8f0;font-size:13px;margin-bottom:6px;"><span style="color:#64748b;">•</span> Rebalanceo mensual/trimestral</div>
+      <div style="color:#e2e8f0;font-size:13px;margin-bottom:6px;"><span style="color:#64748b;">•</span> Por threshold (si activo supera X%)</div>
+      <div style="color:#e2e8f0;font-size:13px;"><span style="color:#64748b;">•</span> Peso objetivo por activo</div>
+    </div>
+
+    <div style="background:#1e1e3a;border:1px solid #818cf8;border-radius:8px;padding:14px;">
+      <div style="color:#a5b4fc;font-weight:bold;margin-bottom:8px;">💰 Dollar Cost Averaging (DCA)</div>
+      <div style="color:#e2e8f0;font-size:13px;margin-bottom:6px;"><span style="color:#64748b;">•</span> Inversión fija periódica</div>
+      <div style="color:#e2e8f0;font-size:13px;margin-bottom:6px;"><span style="color:#64748b;">•</span> Comparar vs lump sum</div>
+      <div style="color:#e2e8f0;font-size:13px;"><span style="color:#64748b;">•</span> Configurar frecuencia y monto</div>
+    </div>
+
+    <div style="background:#1e1e3a;border:1px solid #818cf8;border-radius:8px;padding:14px;">
+      <div style="color:#a5b4fc;font-weight:bold;margin-bottom:8px;">🛡️ Buy & Hold con Stop-Loss</div>
+      <div style="color:#e2e8f0;font-size:13px;margin-bottom:6px;"><span style="color:#64748b;">•</span> Comprar y mantener</div>
+      <div style="color:#e2e8f0;font-size:13px;margin-bottom:6px;"><span style="color:#64748b;">•</span> Stop-loss configurable (%)</div>
+      <div style="color:#e2e8f0;font-size:13px;"><span style="color:#64748b;">•</span> Take-profit configurable (%)</div>
+    </div>
+
+  </div>
+</div>
+
+<div class="section">
+  <h3>Métricas de resultado</h3>
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px;">
+    <div style="background:#0f172a;border:1px solid #334155;border-radius:6px;padding:10px;text-align:center;">
+      <div style="color:#60a5fa;font-size:12px;">Retorno Total</div>
+      <div style="color:#4ade80;font-size:18px;font-weight:bold;">+34.2%</div>
+    </div>
+    <div style="background:#0f172a;border:1px solid #334155;border-radius:6px;padding:10px;text-align:center;">
+      <div style="color:#60a5fa;font-size:12px;">Sharpe Ratio</div>
+      <div style="color:#fff;font-size:18px;font-weight:bold;">1.85</div>
+    </div>
+    <div style="background:#0f172a;border:1px solid #334155;border-radius:6px;padding:10px;text-align:center;">
+      <div style="color:#60a5fa;font-size:12px;">Max Drawdown</div>
+      <div style="color:#f87171;font-size:18px;font-weight:bold;">-12%</div>
+    </div>
+    <div style="background:#0f172a;border:1px solid #334155;border-radius:6px;padding:10px;text-align:center;">
+      <div style="color:#60a5fa;font-size:12px;">vs S&P 500</div>
+      <div style="color:#4ade80;font-size:18px;font-weight:bold;">+8.1%</div>
+    </div>
+  </div>
+</div>
+
+<div style="background:#2d1a1a;border:1px solid #f97316;border-radius:8px;padding:14px;margin-top:8px;">
+  <div style="color:#fb923c;font-weight:bold;margin-bottom:6px;">⚡ Importante: datos históricos</div>
+  <div style="color:#94a3b8;font-size:13px;">Yahoo Finance y Alpha Vantage proveen hasta 20 años de datos históricos diarios. Para crypto, CoinGecko tiene históricos desde el origen de cada moneda. Los datos se cachean en Supabase para no repetir llamadas a las APIs.</div>
+</div>
+
+<p class="subtitle" style="text-align:center;margin-top:16px;">¿Te parece bien este diseño de Backtesting? Responde en el terminal.</p>

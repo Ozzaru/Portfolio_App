@@ -1,0 +1,91 @@
+<h2>Arquitectura del Sistema — Portafolio Personal</h2>
+<p class="subtitle">6 módulos independientes con interfaces bien definidas</p>
+
+<div class="section">
+  <div style="background:#0f172a;border-radius:12px;padding:24px;font-family:monospace;font-size:13px;color:#e2e8f0;line-height:1.8;">
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;">
+      <div style="background:#1e3a5f;border:1px solid #3b82f6;border-radius:8px;padding:12px;text-align:center;">
+        <div style="color:#60a5fa;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">UI Layer</div>
+        <div style="color:#fff;font-weight:bold;">Next.js App Router</div>
+        <div style="color:#94a3b8;font-size:11px;margin-top:4px">Dashboard · Portafolio · Backtest · Escenarios</div>
+      </div>
+      <div style="background:#1e3a5f;border:1px solid #3b82f6;border-radius:8px;padding:12px;text-align:center;">
+        <div style="color:#60a5fa;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Charts</div>
+        <div style="color:#fff;font-weight:bold;">Recharts</div>
+        <div style="color:#94a3b8;font-size:11px;margin-top:4px">Rendimiento · Distribución · Backtest results</div>
+      </div>
+      <div style="background:#1e3a5f;border:1px solid #3b82f6;border-radius:8px;padding:12px;text-align:center;">
+        <div style="color:#60a5fa;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Auth</div>
+        <div style="color:#fff;font-weight:bold;">Supabase Auth</div>
+        <div style="color:#94a3b8;font-size:11px;margin-top:4px">Login · Sesión segura</div>
+      </div>
+    </div>
+
+    <div style="text-align:center;color:#475569;margin:4px 0;">▼ Next.js API Routes</div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;">
+      <div style="background:#1a2e1a;border:1px solid #22c55e;border-radius:8px;padding:12px;text-align:center;">
+        <div style="color:#4ade80;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Módulo 1</div>
+        <div style="color:#fff;font-weight:bold;">Portfolio Manager</div>
+        <div style="color:#94a3b8;font-size:11px;margin-top:4px">CRUD posiciones · Transacciones · Snapshots</div>
+      </div>
+      <div style="background:#1a2e1a;border:1px solid #22c55e;border-radius:8px;padding:12px;text-align:center;">
+        <div style="color:#4ade80;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Módulo 2</div>
+        <div style="color:#fff;font-weight:bold;">Market Data Service</div>
+        <div style="color:#94a3b8;font-size:11px;margin-top:4px">Yahoo Finance · CoinGecko · Alpha Vantage · Manual</div>
+      </div>
+      <div style="background:#1a2e1a;border:1px solid #22c55e;border-radius:8px;padding:12px;text-align:center;">
+        <div style="color:#4ade80;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Módulo 3</div>
+        <div style="color:#fff;font-weight:bold;">Analytics Engine</div>
+        <div style="color:#94a3b8;font-size:11px;margin-top:4px">P&L · Retornos · Allocación · Benchmarks</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;">
+      <div style="background:#2d1a1a;border:1px solid #f97316;border-radius:8px;padding:12px;text-align:center;">
+        <div style="color:#fb923c;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Módulo 4</div>
+        <div style="color:#fff;font-weight:bold;">Backtesting Engine</div>
+        <div style="color:#94a3b8;font-size:11px;margin-top:4px">Estrategias · Históricos · Métricas (Sharpe, DD)</div>
+      </div>
+      <div style="background:#2d1a1a;border:1px solid #f97316;border-radius:8px;padding:12px;text-align:center;">
+        <div style="color:#fb923c;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Módulo 5</div>
+        <div style="color:#fff;font-weight:bold;">Scenario Simulator</div>
+        <div style="color:#94a3b8;font-size:11px;margin-top:4px">What-if · Estrés · Rebalanceo</div>
+      </div>
+      <div style="background:#2d1a1a;border:1px solid #f97316;border-radius:8px;padding:12px;text-align:center;">
+        <div style="color:#fb923c;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Módulo 6</div>
+        <div style="color:#fff;font-weight:bold;">Alerts System</div>
+        <div style="color:#94a3b8;font-size:11px;margin-top:4px">Precio · % cambio · Rebalanceo · Email</div>
+      </div>
+    </div>
+
+    <div style="text-align:center;color:#475569;margin:4px 0;">▼ Supabase (PostgreSQL)</div>
+
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;">
+      <div style="background:#1e1e3a;border:1px solid #818cf8;border-radius:6px;padding:8px;text-align:center;font-size:11px;">
+        <div style="color:#a5b4fc;font-weight:bold;">assets</div>
+        <div style="color:#64748b;font-size:10px;margin-top:2px">ticker · tipo · moneda</div>
+      </div>
+      <div style="background:#1e1e3a;border:1px solid #818cf8;border-radius:6px;padding:8px;text-align:center;font-size:11px;">
+        <div style="color:#a5b4fc;font-weight:bold;">transactions</div>
+        <div style="color:#64748b;font-size:10px;margin-top:2px">compra/venta · precio · fecha</div>
+      </div>
+      <div style="background:#1e1e3a;border:1px solid #818cf8;border-radius:6px;padding:8px;text-align:center;font-size:11px;">
+        <div style="color:#a5b4fc;font-weight:bold;">snapshots</div>
+        <div style="color:#64748b;font-size:10px;margin-top:2px">valor diario del portafolio</div>
+      </div>
+      <div style="background:#1e1e3a;border:1px solid #818cf8;border-radius:6px;padding:8px;text-align:center;font-size:11px;">
+        <div style="color:#a5b4fc;font-weight:bold;">strategies</div>
+        <div style="color:#64748b;font-size:10px;margin-top:2px">reglas · parámetros</div>
+      </div>
+      <div style="background:#1e1e3a;border:1px solid #818cf8;border-radius:6px;padding:8px;text-align:center;font-size:11px;">
+        <div style="color:#a5b4fc;font-weight:bold;">alerts</div>
+        <div style="color:#64748b;font-size:10px;margin-top:2px">condición · umbral · estado</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<p class="subtitle" style="text-align:center;margin-top:16px;">¿Esta arquitectura se ve bien? Responde en el terminal.</p>
