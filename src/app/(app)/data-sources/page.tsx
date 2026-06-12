@@ -26,7 +26,7 @@ export default function DataSourcesPage() {
 
   const load = useCallback(async () => {
     const res = await fetch('/api/prices')
-    if (res.ok) setPrices(await res.json())
+    if (res.ok) res.json().then(setPrices)
   }, [])
 
   useEffect(() => {

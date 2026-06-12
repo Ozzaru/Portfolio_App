@@ -34,8 +34,8 @@ export default function PortfolioPage() {
 
   const load = useCallback(async () => {
     const [aRes, tRes] = await Promise.all([fetch('/api/assets'), fetch('/api/transactions')])
-    if (aRes.ok) setAssets(await aRes.json())
-    if (tRes.ok) setTxs(await tRes.json())
+    if (aRes.ok) aRes.json().then(setAssets)
+    if (tRes.ok) tRes.json().then(setTxs)
   }, [])
 
   useEffect(() => {
