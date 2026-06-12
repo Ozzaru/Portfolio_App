@@ -16,6 +16,8 @@ export default function LoginPage() {
     setError(null)
     setLoading(true)
     const supabase = createClient()
+    // signUp asume "Confirm email" desactivado en Supabase (app personal);
+    // con confirmación activa no habría sesión y el redirect fallaría.
     const { error } =
       mode === 'signin'
         ? await supabase.auth.signInWithPassword({ email, password })
