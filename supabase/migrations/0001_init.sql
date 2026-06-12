@@ -7,7 +7,7 @@ create table assets (
   ticker text not null,
   name text not null default '',
   asset_type text not null check (asset_type in ('stock','etf','crypto','cash','other')),
-  currency text not null default 'USD',
+  currency text not null default 'USD' check (currency = upper(currency) and length(currency) = 3),
   created_at timestamptz not null default now(),
   unique (user_id, ticker)
 );
@@ -64,10 +64,15 @@ create table price_cache (
   unique (ticker, price_date, source)
 );
 
-create index idx_transactions_user on transactions(user_id);
+create index idx_transactions_user_asset on transactions(user_id, asset_id);
 create index idx_price_cache_ticker_date on price_cache(ticker, price_date desc);
 
 -- RLS: cada usuario solo ve sus filas
+-- Nota de diseño: los jobs de Fase 2 (market data, snapshots) se ejecutan en
+-- Route Handlers bajo la sesión del usuario (rol authenticated), por lo que las
+-- políticas siguientes los cubren; no se depende del bypass de service_role.
+-- Se permite UPDATE retroactivo en price_cache: corregir un precio manual
+-- histórico es un caso de uso legítimo en una app personal.
 alter table assets enable row level security;
 alter table transactions enable row level security;
 alter table snapshots enable row level security;
@@ -78,13 +83,22 @@ alter table price_cache enable row level security;
 create policy "own assets" on assets for all
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "own transactions" on transactions for all
-  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+  using (auth.uid() = user_id)
+  with check (
+    auth.uid() = user_id
+    and exists (select 1 from assets a where a.id = asset_id and a.user_id = auth.uid())
+  );
 create policy "own snapshots" on snapshots for all
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "own strategies" on strategies for all
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "own alerts" on alerts for all
-  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+  using (auth.uid() = user_id)
+  with check (
+    auth.uid() = user_id
+    and (asset_id is null
+         or exists (select 1 from assets a where a.id = asset_id and a.user_id = auth.uid()))
+  );
 
 create policy "read prices" on price_cache for select to authenticated using (true);
 create policy "write prices" on price_cache for insert to authenticated with check (true);
