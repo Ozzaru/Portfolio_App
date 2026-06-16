@@ -16,69 +16,84 @@ reutilizando el dominio puro de la Fase 1 y los datos de la Fase 2.
 - **Lógica pura en `src/lib/`** con tests Vitest; **parseo/cálculo testeable** aislado de IO.
 - **Route Handlers finos y autenticados**; la IO (Supabase, red) se carga ahí y se delega a funciones puras.
 - **Páginas `'use client'`** que consumen el API; gráficas con **recharts** (ya instalado).
-- **Sin migración SQL:** `snapshots` y `price_cache` ya existen; el benchmark vive en `price_cache`
-  (tabla compartida de datos de mercado). Las preferencias de UI van en **localStorage**.
+- **Una migración aditiva:** se añade `price_cache.adj_price` (nullable) para almacenar el cierre **ajustado** junto
+  al **crudo** (ver Decisión 0). `snapshots` y el resto de `price_cache` ya existen; el benchmark vive en
+  `price_cache` (tabla compartida). Las preferencias de UI van en **localStorage**.
 
 ---
 
 ## Decisiones de diseño
 
-### 0. Base de precios: **adjusted close** para los cálculos de retorno
+### 0. Base de precios: **bifurcación raw / adjusted**
 
-Todos los cálculos de **retorno** (serie del chart, TWR, volatilidad, Sharpe, drawdown, correlación, retorno por
-activo y benchmark) usan **precio de cierre ajustado** (adjusted close), **en ambos lados** (activos del portafolio
-y benchmark). El adjusted close incorpora splits y dividendos, por lo que:
-- los **retornos a través de un split son correctos** aun con la cantidad sin ajustar (el factor de split va dentro
-  del precio; `cantidad × adj_close` tiene trayectoria de retorno continua);
-- la comparación portafolio vs benchmark queda en la **misma base** (total return), sin sesgo por dividendos.
+Se almacenan y usan **dos** series de precio, cada una para un propósito distinto. Mezclarlas es un error grave:
+el adjusted close reescribe el historial hacia atrás ante un split/dividendo, mientras las cantidades de los
+holdings están fijas → usar adjusted para el **valor absoluto** da disparates (un split 4:1 valoraría una compra
+real de $1000 en $250). Por eso:
 
-**Implicación en Fase 2:** el backfill (y la auto-descarga del benchmark) almacenan adjusted close en `price_cache`.
-Esto extiende el adaptador Yahoo para exponer `indicators.adjclose` y el de Alpha Vantage para usar
-`TIME_SERIES_DAILY_ADJUSTED`. CoinGecko (crypto) no tiene splits/dividendos → ya es "ajustado". En la fecha más
-reciente `adj_close == close`, así que el **valor actual** del dashboard y `/api/positions` (que usan el último
-precio) no cambian. Los niveles **absolutos históricos** quedan en base ajustada (ligeramente comprimidos), lo cual
-es correcto para retornos. Tras un nuevo corporate action hay que **re-ejecutar el backfill** (upsert idempotente
-reescribe la serie reajustada) — ver "Limitaciones conocidas".
+- **Retornos** (serie del chart, TWR, volatilidad, Sharpe, drawdown, correlación, retorno por activo, benchmark):
+  **adjusted close**. Incorpora splits y dividendos → los retornos a nivel de activo son correctos y split-safe
+  **sin** necesidad del workaround, y la comparación vs benchmark queda en la misma base (total return).
+- **Valor absoluto en $** (`V_t`, `absolutePnl`, valor del dashboard): **close crudo (raw)**. Mantiene los dólares
+  en su escala real (la compra de $1000 vale $1000). Para que sea exacto a través de un split, el usuario debe
+  registrar el split como transacción (ver "Limitaciones conocidas"); el **TWR no depende de ese workaround**.
 
-### 1. Origen de la serie de rendimiento: **híbrido**
+**Almacenamiento:** `price_cache` gana la columna `adj_price` (nullable). El backfill y la auto-descarga del
+benchmark guardan **ambos**: `price` (raw) y `adj_price` (ajustado). Crypto (CoinGecko) y precios manuales →
+`adj_price = price` (no hay splits/dividendos). En la fecha más reciente `adj_price == price`, así que el valor
+actual del dashboard y `/api/positions` no cambian.
 
-Para cada fecha del rango:
-1. **Si existe un snapshot guardado** de esa fecha → se usa ese valor (dato real observado).
-2. **Si no** → se **reconstruye**: `holdings as-of fecha` (transacciones con `executedAt ≤ fecha`, por costo
-   promedio de la Fase 1) × **adjusted close** de ese día.
+**Implicación en Fase 2:** el adaptador Yahoo expone `indicators.adjclose` además de `quote.close`; Alpha Vantage
+usa `TIME_SERIES_DAILY_ADJUSTED` (raw `4. close` + `5. adjusted close`). Tras un nuevo corporate action hay que
+**re-ejecutar el backfill** (upsert idempotente reescribe `adj_price`) — ver "Limitaciones conocidas".
 
-**El chart se dibuja en espacio de retornos (normalizado a 100)**, no en dólares absolutos. Esto evita cualquier
-salto en la costura snapshot↔reconstrucción: los snapshots solo existen en fechas **recientes** (desde que el usuario
-empezó a refrescar), donde el factor de ajuste ≈ 1 y por tanto snapshot (raw $) y reconstrucción (adj $) **coinciden**;
-en el pasado, donde no hay snapshots, la serie es reconstrucción pura. Se siguen grabando snapshots hacia adelante
-(Fase 2) y son además la fuente del **valor absoluto actual** y un cross-check del dato real.
+### 1. Origen de la serie de rendimiento: **reconstrucción por retornos de constituyentes**
 
-**Por qué:** da una gráfica útil con ~5 años de datos desde el día uno (vía el backfill de Fase 2) y al mismo
-tiempo respeta el dato real observado donde exista. Es la combinación más fiel + con más histórico.
+El **chart de rendimiento es una serie de retornos** (normalizada a 100), construida a partir de los **retornos
+diarios de cada activo** (adjusted close) ponderados por su peso en el portafolio (ver Decisión 2), no como un ratio
+de valores absolutos. Para cada fecha del rango se computan: los holdings as-of fecha (transacciones con
+`executedAt ≤ fecha`, costo promedio de Fase 1), sus pesos (raw close) y los retornos por activo (adjusted close).
+
+**Rol de los snapshots:** la reconstrucción por retornos hace que el chart **ya no dependa de los snapshots**
+(quedan superados para los retornos). Los snapshots se siguen grabando hacia adelante (Fase 2) y sirven como
+**valor absoluto observado** / cross-check del dato real; el **valor absoluto actual** del dashboard sigue saliendo
+de `/api/positions`. Esto matiza la decisión de "híbrido" de rondas anteriores: el motor de retornos es
+auto-suficiente; los snapshots aportan fidelidad solo en la dimensión de valor absoluto.
+
+**Por qué:** da una gráfica útil con ~5 años de datos desde el día uno (vía el backfill de Fase 2) y, al computar
+los retornos a nivel de activo con adjusted close, es correcta ante splits/dividendos sin depender de workarounds.
 
 **Rango temporal:** la serie nunca empieza antes de la **primera transacción** del usuario (no existe portafolio
 antes). Esto evita el problema de "años vacíos" y acota el cómputo.
 
 ### 2. Método de retorno: **TWR + P&L absoluto**
 
-- **% principal = Time-Weighted Return (TWR).** Neutraliza el efecto de aportaciones/retiros, es el estándar de
-  la industria y **lo único comparable de forma justa contra un benchmark** (objetivo de Fase 3/4).
-  TWR diario con **convención end-of-day** (los flujos del día se asumen al cierre): `r_t = (V_t − F_t) / V_{t-1} − 1`,
-  encadenado `TWR = Π(1 + r_t) − 1`. Guarda: si `V_{t-1} = 0` (día de inicio del portafolio), `r_t = 0`.
-  Se elige end-of-day (vs beginning-of-day `V_t/(V_{t-1}+F_t)−1`) porque aísla el retorno de mercado de los holdings
-  preexistentes sin **diluir** el retorno del día al meter el flujo nuevo en el denominador.
+- **% principal = Time-Weighted Return (TWR) por retornos de constituyentes.** En vez de comparar valores absolutos
+  `V_t/V_{t-1}` (que mezcla retorno de mercado con cambios de composición y obliga a manejar flujos `F_t` y divisiones
+  por cero), el retorno diario del portafolio es el **promedio ponderado de los retornos de sus activos**:
 
-  **Modelo de flujos (importante, propio de esta app):** la app **no modela una cuenta de efectivo** —
-  [holdings.ts](../../../src/lib/portfolio/holdings.ts) deriva las posiciones por activo solo de compras/ventas; una
-  compra **no** debita ningún saldo de cash rastreado. Por tanto `V_t = Σ holdings × precio` no contiene caja, y una
-  compra con capital fresco **sí es un flujo externo** de entrada (`F_t` = +costo), una venta uno de salida
-  (`F_t` = −ingreso). Tratarlas como flujo 0 (modelo de corretaje con caja interna) daría división por cero el primer
-  día de compra (`r₁ = V₁/0`). Borde documentado: si el usuario modela un activo `cash` explícito, la app no
-  auto-debita ese cash al comprar otro activo, así que mezclar ambos estilos sobreestimaría los aportes.
-- **P&L absoluto en $ (del período)** = `(V_fin − V_ini) − flujos_netos_del_período`, es decir el dinero ganado/perdido
-  por movimiento de mercado durante el período seleccionado (excluyendo aportaciones/retiros). Para "Todo" equivale a
-  `valor_actual − capital_neto_aportado`. Métrica intuitiva ("cuánto he ganado"), consistente con que el período
-  afecta a toda la página.
+  `r_portafolio,t = Σᵢ ( wᵢ,ₜ₋₁ × rᵢ,ₜ^adj )`
+
+  donde `rᵢ,ₜ^adj = adj_closeᵢ,ₜ / adj_closeᵢ,ₜ₋₁ − 1` (retorno del activo con **adjusted close**) y `wᵢ,ₜ₋₁` es el
+  peso del activo al **inicio** del día (holdings as-of × **raw close** de `t-1`, normalizado). TWR encadenado
+  `TWR = Π(1 + r_portafolio,t) − 1`. La serie del chart es el producto acumulado normalizado a 100.
+
+  **Por qué este método (resuelve flujos, splits y dividendos a la vez):**
+  - **Flujos:** una compra entra como peso nuevo el día siguiente (al inicio del día de compra su peso es 0 → no
+    genera retorno espurio). No hace falta `F_t` en la fórmula ni convención de timing.
+  - **Splits/dividendos:** los retornos por activo usan adjusted close → correctos sin workaround.
+  - **Liquidación → recompra:** si el portafolio se vacía (todo vendido), los días sin holdings tienen pesos 0 →
+    `r_portafolio,t = 0`; la recompra reanuda el encadenamiento sin dividir nunca por `V_{t-1}=0`.
+
+  **Modelo de flujos (propio de esta app):** la app **no modela una cuenta de efectivo** —
+  [holdings.ts](../../../src/lib/portfolio/holdings.ts) deriva posiciones por activo solo de compras/ventas. Esto es
+  consistente con el método de pesos: el capital fresco entra como peso nuevo, no como retorno. Borde documentado:
+  si el usuario modela un activo `cash` explícito, la app no lo auto-debita al comprar otro activo.
+- **P&L absoluto en $ (del período)** = `(V_fin − V_ini) − flujos_netos_del_período`, con `V` en **raw close** y
+  `flujos` = compras (+) / ventas (−) en dólares reales (misma base raw → sin desajuste de escala). Es el dinero
+  ganado/perdido por movimiento de mercado en el período (excluye aportaciones/retiros). Para "Todo" equivale a
+  `valor_actual − capital_neto_aportado`. Requiere el workaround de split para ser exacto a través de un split
+  (ver "Limitaciones conocidas"); el TWR no lo requiere.
 - **MWR / IRR (money-weighted): fuera de alcance.** Evolución futura: se añade como métrica secundaria sin
   tocar lo demás (necesitaría un solver de IRR y no es comparable contra una línea de benchmark).
 
@@ -116,6 +131,10 @@ tabla de settings (Fase 6), (c) manejo de moneda no-USD y alineación de días h
 - **Correlaciones (sin sesgo de asincronía):** Pearson sobre los mismos retornos de días hábiles. Así el retorno
   Vie→Lun de un cripto y de una acción abarcan el mismo intervalo y son comparables; se evita que los retornos 0 de
   fin de semana diluyan la correlación hacia abajo.
+- **Nota de implementación (vol/Sharpe/correlación):** los retornos se calculan **a partir de la lista filtrada de
+  fechas operativas**, tomando `serie[t] / serie[t-1] − 1` entre índices **consecutivos de esa lista** (no de un array
+  global de retornos diarios de calendario). Para cripto, su retorno del lunes se recalcula como `P_lunes / P_viernes − 1`
+  sobre esas mismas fechas de intersección, no `domingo→lunes`.
 - **Retorno por activo:** retorno de precio (adjusted close) de cada ticker mantenido (inicio → fin del período).
 - **Fuera de alcance:** mejor/peor día del período.
 
@@ -132,16 +151,21 @@ tabla de settings (Fase 6), (c) manejo de moneda no-USD y alineación de días h
 
 ## Estructura de archivos
 
+**Crear — migración SQL:**
+- `supabase/migrations/0002_price_cache_adj_close.sql` — `alter table price_cache add column adj_price numeric;`
+  (nullable, aditiva).
+
 **Crear — motor puro `src/lib/analytics/`:**
 - `dates.ts` — `periodStartDate(period, firstTxDate, today)`: mapea el período a fecha de inicio.
-- `series.ts` — reconstrucción híbrida de la serie diaria de valor + flujos de caja netos por día.
-- `returns.ts` — `timeWeightedReturn(serie, flujos)`, `absolutePnl(serie, flujos)` = `(V_fin − V_ini) − Σflujos`,
-  `normalizeToBase(serie, 100)`.
-- `riskMetrics.ts` — `dailyReturns`, `volatility` (×√252), `sharpe` (desde retornos diarios ×√252, `rf=0`),
-  `maxDrawdown`.
+- `series.ts` — para el rango: holdings as-of por día y produce (a) **retornos por activo** (adjusted close),
+  (b) **pesos start-of-day** (raw close), (c) **serie de valor absoluto** (raw close). Reusa holdings de Fase 1.
+- `returns.ts` — `portfolioDailyReturns(pesos, retornosPorActivo)` = `Σ wᵢ rᵢ`; `timeWeightedReturn` = `Π(1+r)−1`;
+  `absolutePnl(serieValorRaw, flujos)` = `(V_fin − V_ini) − Σflujos`; `normalizeToBase(retornos, 100)`.
+- `riskMetrics.ts` — `dailyReturns` (entre fechas operativas consecutivas), `volatility` (×√252),
+  `sharpe` (desde retornos diarios ×√252, `rf=0`), `maxDrawdown`.
 - `correlation.ts` — `correlationMatrix(seriesPorTicker)`: Pearson sobre retornos de **días hábiles bursátiles**
-  (sin forward-fill; intersección de fechas con precio real).
-- `perAsset.ts` — `perAssetReturns(...)` retorno por activo en el período.
+  (sin forward-fill; intersección de fechas con precio real; retornos entre índices consecutivos de esa lista).
+- `perAsset.ts` — `perAssetReturns(...)` retorno por activo en el período (adjusted close).
 - Tests `*.test.ts` junto a cada módulo.
 
 **Crear — UI:**
@@ -169,9 +193,10 @@ tabla de settings (Fase 6), (c) manejo de moneda no-USD y alineación de días h
 
 Flujo del handler:
 1. Auth (`getUser`; 401 si no hay sesión).
-2. Carga `transactions` (+`ticker`, `asset_type`), `price_cache` (tickers del usuario + benchmark), `snapshots`.
+2. Carga `transactions` (+`ticker`, `asset_type`), `price_cache` (`ticker, price_date, price, adj_price` de los
+   tickers del usuario + benchmark), `snapshots`.
 3. **Auto-gestión del benchmark:** si falta histórico del benchmark en el período, lo descarga con los adaptadores
-   de Fase 2 y hace upsert en `price_cache`; error aislado → `benchmarkError`.
+   de Fase 2 (guardando `price` y `adj_price`) y hace upsert en `price_cache`; error aislado → `benchmarkError`.
 4. Calcula con el motor puro y responde:
 
 ```jsonc
@@ -211,36 +236,44 @@ es trivial; si en el futuro pesa, se parte en `/api/analytics/series` + `/api/an
 - **<2 activos** → la matriz de correlaciones muestra aviso en vez de tabla.
 - **Benchmark falla** → se dibuja solo el portafolio + nota "benchmark no disponible" (`benchmarkError`); no rompe.
 - **Precio faltante** (fin de semana/hueco) → forward-fill con el último precio conocido ≤ fecha **para la línea de
-  valor**. La **matriz de correlaciones NO usa forward-fill** (ver Decisión 4).
+  valor**. Las **estadísticas de distribución (vol/Sharpe/correlación) NO usan forward-fill** (ver Decisión 4).
 - **Crypto >1 año / IPO tardía** → el ticker aporta 0 antes de su primer precio disponible; "Todo" se ancla a la
   primera transacción. Esperado y documentado.
-- **Guardas numéricas:** `V_{t-1}=0` (primer día), divisiones por cero, períodos sin suficientes puntos para
-  vol/Sharpe (devolver `null`/aviso, no `NaN`).
+- **Liquidación total → recompra:** los días sin holdings tienen pesos 0 → `r_portafolio,t = 0`; la recompra reanuda
+  el encadenamiento. Por construcción (retornos ponderados) **nunca se divide por `V_{t-1}=0`**.
+- **Guardas numéricas:** activo sin precio en `t-1` (no entra en los pesos ese día), divisiones por cero, períodos
+  sin suficientes puntos para vol/Sharpe (devolver `null`/aviso, no `NaN`).
 
 ---
 
 ## Limitaciones conocidas
 
 - **Corporate actions (splits) sobre cantidades:** la app guarda **cantidades sin ajustar** y no procesa splits en
-  `transactions`. El uso de **adjusted close** (Decisión 0) hace que los **retornos** a través de un split sean
-  correctos, pero el **valor absoluto** de una posición que hizo split queda mal (p. ej. 10 acciones tras un split
-  2:1 deberían ser 20) — esto ya afecta al dashboard de Fase 1/2, no lo introduce la Fase 3.
-  **Workaround:** registrar el split como una transacción de ajuste. **Fix completo (futuro):** una función de
-  corporate actions que ajuste cantidades. Fuera de alcance de la Fase 3 (YAGNI para una app personal).
-- **Staleness del adjusted close:** los valores ajustados se calculan respecto al historial de splits/dividendos
-  conocido al momento del backfill. Tras un **nuevo** corporate action hay que **re-ejecutar el backfill** (el upsert
-  idempotente reescribe la serie reajustada).
+  `transactions`. Gracias a los retornos por activo con **adjusted close**, el **TWR, el chart y las métricas de
+  retorno son correctos a través de un split sin workaround**. Lo que queda mal es el **valor absoluto en $** (raw):
+  una posición que hizo split 2:1 sigue valorada con 10 acciones en vez de 20 — esto ya afecta al dashboard de
+  Fase 1/2, no lo introduce la Fase 3. **Workaround:** registrar el split como transacción de ajuste (corrige el
+  valor absoluto). **Fix completo (futuro):** una función de corporate actions. Fuera de alcance (YAGNI app personal).
+- **Dividendos en efectivo no rastreados:** como no hay cuenta de efectivo, el **valor absoluto en $** (raw) no
+  incluye el cash de un dividendo recibido (el precio raw cae en la fecha ex-dividendo y ese efectivo "se pierde" de
+  la valoración). El **TWR sí incluye el total return** (vía adjusted close). Es decir, el TWR puede superar el
+  crecimiento del valor absoluto por el monto de los dividendos. Documentado, no es un bug.
+- **Staleness del adjusted close:** `adj_price` se calcula respecto al historial de splits/dividendos conocido al
+  momento del backfill. Tras un **nuevo** corporate action hay que **re-ejecutar el backfill** (el upsert idempotente
+  reescribe `adj_price`).
 
 ---
 
 ## Estrategia de tests
 
-- **Vitest (puro):** `periodStartDate`; reconstrucción híbrida (override por snapshot + forward-fill + ticker sin
-  histórico aporta 0); **TWR end-of-day con flujos** (incl. guarda `V_{t-1}=0` y día de compra con holdings previos);
-  `absolutePnl`; **Sharpe desde retornos diarios** (verificar escalado √252 y períodos ≠ 1 año); volatilidad/drawdown;
-  **correlación sobre días hábiles sin forward-fill** (incl. <2 activos y cripto+acción sin dilución de fin de semana);
-  normalización a 100; retorno por activo.
-- **Vitest (Fase 2 modificada):** `parseYahooChart` extrae adjusted close; `parseAlphaDaily` usa `5. adjusted close`.
+- **Vitest (puro):** `periodStartDate`; `series.ts` (holdings as-of, pesos start-of-day raw, retornos por activo adj);
+  **TWR por retornos ponderados** (incl. día de compra entra como peso al día siguiente; **split sin workaround da
+  retorno correcto**; **liquidación total → recompra** sin división por cero); `absolutePnl` en raw (incl. el caso
+  split que requiere workaround); **Sharpe desde retornos diarios** (escalado √252, períodos ≠ 1 año);
+  volatilidad/drawdown; **correlación/vol sobre días hábiles sin forward-fill** (retornos entre fechas operativas
+  consecutivas; <2 activos; cripto+acción Vie→Lun sin dilución); normalización a 100; retorno por activo.
+- **Vitest (Fase 2 modificada):** `parseYahooChart` extrae raw **y** adjusted close; `parseAlphaDaily` usa
+  `4. close` (raw) **y** `5. adjusted close`.
 - **Route Handler + UI:** `lint` + `build` + verificación e2e manual (la lógica pura ya queda cubierta por unit
   tests, según la convención de las Fases 1–2).
 
