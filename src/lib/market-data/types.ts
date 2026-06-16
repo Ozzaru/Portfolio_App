@@ -1,7 +1,9 @@
 // Precio de un ticker en una fecha concreta (YYYY-MM-DD, UTC).
+// price = cierre crudo (valor absoluto $). adjPrice = cierre ajustado (retornos).
 export interface PricePoint {
   date: string
   price: number
+  adjPrice: number
 }
 
 // Cotización actual normalizada.

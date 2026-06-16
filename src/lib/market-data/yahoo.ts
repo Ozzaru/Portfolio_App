@@ -18,18 +18,24 @@ export function parseYahooChart(json: any): YahooParsed {
   const ticker: string = result.meta?.symbol ?? ''
   const timestamps: number[] = result.timestamp ?? []
   const closes: (number | null)[] = result.indicators?.quote?.[0]?.close ?? []
+  const adjcloses: (number | null)[] = result.indicators?.adjclose?.[0]?.adjclose ?? []
 
   const history: PricePoint[] = []
   for (let i = 0; i < timestamps.length; i++) {
     const c = closes[i]
     if (typeof c !== 'number') continue
-    history.push({ date: unixToISODate(timestamps[i]), price: c })
+    const a = adjcloses[i]
+    history.push({ date: unixToISODate(timestamps[i]), price: c, adjPrice: typeof a === 'number' ? a : c })
   }
 
   const metaPrice = result.meta?.regularMarketPrice
   const current: PricePoint | null =
     typeof metaPrice === 'number'
-      ? { date: unixToISODate(result.meta?.regularMarketTime ?? timestamps[timestamps.length - 1]), price: metaPrice }
+      ? {
+          date: unixToISODate(result.meta?.regularMarketTime ?? timestamps[timestamps.length - 1]),
+          price: metaPrice,
+          adjPrice: metaPrice, // la cotización de hoy: sin ajuste todavía → adj == raw
+        }
       : history.at(-1) ?? null
 
   return { ticker, current, history }
