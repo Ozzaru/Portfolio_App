@@ -80,11 +80,15 @@ export default function DashboardPage() {
   const [series, setSeries] = useState<SeriesPoint[]>([])
 
   useEffect(() => {
+    let active = true
     fetch(`/api/analytics?period=${period}&benchmark=${benchmark}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (data) setSeries(data.series as SeriesPoint[])
+        if (active && data) setSeries(data.series as SeriesPoint[])
       })
+    return () => {
+      active = false
+    }
   }, [period, benchmark])
 
   const allocation = positions
