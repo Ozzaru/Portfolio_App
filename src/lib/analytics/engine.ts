@@ -148,15 +148,25 @@ function buildCorrelation(
   dates: string[]
 ): { tickers: string[]; matrix: (number | null)[][] } {
   if (tickers.length < 2) return { tickers, matrix: tickers.length === 1 ? [[1]] : [] }
-  // Fechas donde TODOS los tickers tienen precio real as-of (intersección).
-  const usable = dates.filter((d) => tickers.every((t) => priceAsOf(priceSeries.get(t) ?? [], d) !== null))
+  // Mapa fecha→adjPrice con precio REAL por ticker (sin forward-fill): la Decisión 4
+  // exige intersección de fechas con precio real, no precios rancios arrastrados que
+  // inyectarían retornos 0 artificiales y diluirían la correlación.
+  const realAdj = new Map<string, Map<string, number>>()
+  for (const t of tickers) {
+    const m = new Map<string, number>()
+    for (const p of priceSeries.get(t) ?? []) m.set(p.date, p.adjPrice)
+    realAdj.set(t, m)
+  }
+  // Intersección: fechas operativas donde TODOS los tickers tienen precio real ese día.
+  const usable = dates.filter((d) => tickers.every((t) => realAdj.get(t)!.has(d)))
   const returnsByTicker = new Map<string, number[]>()
   for (const t of tickers) {
+    const m = realAdj.get(t)!
     const rets: number[] = []
     for (let i = 1; i < usable.length; i++) {
-      const prev = priceAsOf(priceSeries.get(t) ?? [], usable[i - 1])!
-      const cur = priceAsOf(priceSeries.get(t) ?? [], usable[i])!
-      rets.push(prev.adjPrice > 0 ? cur.adjPrice / prev.adjPrice - 1 : 0)
+      const prev = m.get(usable[i - 1])!
+      const cur = m.get(usable[i])!
+      rets.push(prev > 0 ? cur / prev - 1 : 0)
     }
     returnsByTicker.set(t, rets)
   }
