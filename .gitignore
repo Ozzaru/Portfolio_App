@@ -42,4 +42,5 @@ next-env.d.ts
 
 # claude code local config
 .claude/
+.superpowers/
 *.log
