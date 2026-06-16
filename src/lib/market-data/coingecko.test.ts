@@ -27,8 +27,8 @@ describe('parseMarketChart', () => {
     const json = { prices: [[1704153600000, 42000], [1704196800000, 42500], [1704240000000, 44000]] }
     const out = parseMarketChart(json)
     expect(out).toEqual([
-      { date: '2024-01-02', price: 42500 },
-      { date: '2024-01-03', price: 44000 },
+      { date: '2024-01-02', price: 42500, adjPrice: 42500 },
+      { date: '2024-01-03', price: 44000, adjPrice: 44000 },
     ])
   })
   it('lanza si no hay array de precios', () => {

@@ -49,7 +49,7 @@ export function parseMarketChart(json: any): PricePoint[] {
   }
   const byDate = new Map<string, number>()
   for (const [ms, price] of prices) byDate.set(msToISODate(ms), price)
-  return [...byDate].map(([date, price]) => ({ date, price }))
+  return [...byDate].map(([date, price]) => ({ date, price, adjPrice: price }))
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
