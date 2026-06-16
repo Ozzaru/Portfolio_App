@@ -10,7 +10,11 @@ export function parseAlphaDaily(json: any): PricePoint[] {
   const series = json?.['Time Series (Daily)']
   if (!series) throw new Error(json?.['Error Message'] ?? 'respuesta de Alpha Vantage inválida')
   return Object.entries(series)
-    .map(([date, v]: [string, any]) => ({ date, price: Number(v['4. close']) }))
+    .map(([date, v]: [string, any]) => {
+      const price = Number(v['4. close'])
+      const adj = v['5. adjusted close']
+      return { date, price, adjPrice: adj != null ? Number(adj) : price }
+    })
     .sort((a, b) => a.date.localeCompare(b.date))
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -28,7 +32,7 @@ export function createAlphaVantageAdapter(
     },
     async fetchHistory(ticker) {
       if (!apiKey) throw new Error('Alpha Vantage sin API key configurada')
-      const url = `${BASE}?function=TIME_SERIES_DAILY&symbol=${encodeURIComponent(
+      const url = `${BASE}?function=TIME_SERIES_DAILY_ADJUSTED&symbol=${encodeURIComponent(
         ticker
       )}&outputsize=full&apikey=${apiKey}`
       return parseAlphaDaily(await fetcher(url))
