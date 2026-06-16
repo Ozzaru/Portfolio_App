@@ -10,6 +10,7 @@ export interface PriceRow {
   ticker: string
   date: string
   price: number
+  adjPrice: number
   source: string
 }
 
@@ -76,7 +77,9 @@ export async function backfillHistory(
     if (!src) continue
     try {
       const points = await adapters[src].fetchHistory(a.ticker, fromISO)
-      rows.push(...points.map((p) => ({ ticker: a.ticker, date: p.date, price: p.price, source: src })))
+      rows.push(
+        ...points.map((p) => ({ ticker: a.ticker, date: p.date, price: p.price, adjPrice: p.adjPrice, source: src }))
+      )
       record(src, true, points.length)
     } catch (e) {
       // Respaldo Alpha Vantage solo para acciones/ETF con key configurada.
@@ -84,7 +87,13 @@ export async function backfillHistory(
         try {
           const points = await adapters.alphaVantage.fetchHistory(a.ticker, fromISO)
           rows.push(
-            ...points.map((p) => ({ ticker: a.ticker, date: p.date, price: p.price, source: 'alpha-vantage' }))
+            ...points.map((p) => ({
+              ticker: a.ticker,
+              date: p.date,
+              price: p.price,
+              adjPrice: p.adjPrice,
+              source: 'alpha-vantage',
+            }))
           )
           record('alpha-vantage', true, points.length)
           continue

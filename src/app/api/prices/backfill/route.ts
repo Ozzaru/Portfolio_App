@@ -32,6 +32,7 @@ export async function POST() {
     const batch = rows.slice(i, i + 500).map((r) => ({
       ticker: r.ticker,
       price: r.price,
+      adj_price: r.adjPrice,
       price_date: r.date,
       source: r.source,
     }))

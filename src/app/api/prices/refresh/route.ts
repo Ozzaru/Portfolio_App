@@ -28,6 +28,7 @@ export async function POST() {
     const rows = quotes.map((q) => ({
       ticker: q.ticker,
       price: q.price,
+      adj_price: q.price,
       price_date: q.date,
       source: sourceOf(q.ticker, assets ?? []),
     }))

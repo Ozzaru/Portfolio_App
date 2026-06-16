@@ -7,7 +7,7 @@ const okYahoo: MarketDataAdapter = {
   supports: (t) => t === 'stock' || t === 'etf',
   fetchQuotes: async (ts) => ts.map((t) => ({ ticker: t, price: 100, date: '2026-06-15' })),
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  fetchHistory: async (_t) => [{ date: '2021-06-15', price: 90 }],
+  fetchHistory: async (_t) => [{ date: '2021-06-15', price: 90, adjPrice: 81 }],
 }
 const failingCoin: MarketDataAdapter = {
   id: 'coingecko',
@@ -48,13 +48,13 @@ describe('refreshQuotes', () => {
 })
 
 describe('backfillHistory', () => {
-  it('devuelve filas {ticker,date,price,source} por activo', async () => {
+  it('devuelve filas {ticker,date,price,adjPrice,source} por activo', async () => {
     const { rows, results } = await backfillHistory(
       [{ ticker: 'AAPL', asset_type: 'stock' }],
       '2021-06-15',
       { yahoo: okYahoo, coingecko: failingCoin, alphaVantage: undefined }
     )
-    expect(rows).toEqual([{ ticker: 'AAPL', date: '2021-06-15', price: 90, source: 'yahoo' }])
+    expect(rows).toEqual([{ ticker: 'AAPL', date: '2021-06-15', price: 90, adjPrice: 81, source: 'yahoo' }])
     expect(results).toContainEqual({ source: 'yahoo', ok: true, count: 1 })
   })
 
@@ -69,13 +69,13 @@ describe('backfillHistory', () => {
       id: 'alpha-vantage',
       supports: (t) => t === 'stock' || t === 'etf',
       fetchQuotes: async () => [],
-      fetchHistory: async () => [{ date: '2021-06-15', price: 88 }],
+      fetchHistory: async () => [{ date: '2021-06-15', price: 88, adjPrice: 80 }],
     }
     const { rows } = await backfillHistory([{ ticker: 'AAPL', asset_type: 'stock' }], '2021-06-15', {
       yahoo: failingYahoo,
       coingecko: failingCoin,
       alphaVantage: alpha,
     })
-    expect(rows).toEqual([{ ticker: 'AAPL', date: '2021-06-15', price: 88, source: 'alpha-vantage' }])
+    expect(rows).toEqual([{ ticker: 'AAPL', date: '2021-06-15', price: 88, adjPrice: 80, source: 'alpha-vantage' }])
   })
 })
