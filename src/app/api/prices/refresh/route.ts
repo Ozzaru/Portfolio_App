@@ -56,7 +56,10 @@ async function takeSnapshot(supabase: any, userId: string, quotes: { ticker: str
   const { data: txRows, error } = await supabase
     .from('transactions')
     .select('asset_id, side, quantity, price, fees, executed_at, assets(ticker)')
-  if (error) return null
+  if (error) {
+    console.error('snapshot: no se pudieron leer transactions:', error.message)
+    return null
+  }
   const transactions: Transaction[] = (txRows ?? []).map((row: any) => ({
     assetId: row.asset_id,
     ticker: row.assets?.ticker ?? '',
@@ -69,12 +72,16 @@ async function takeSnapshot(supabase: any, userId: string, quotes: { ticker: str
   if (computeHoldings(transactions).length === 0) return null
   const totalValue = computeSnapshotValue(transactions, quotes)
   const today = new Date().toISOString().slice(0, 10)
-  await supabase
+  const { error: snapErr } = await supabase
     .from('snapshots')
     .upsert(
       { user_id: userId, snapshot_date: today, total_value: totalValue },
       { onConflict: 'user_id,snapshot_date' }
     )
+  if (snapErr) {
+    console.error('snapshot: no se pudo guardar:', snapErr.message)
+    return null
+  }
   return totalValue
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
