@@ -6,7 +6,7 @@ Cada fase produce software funcional y testeable por sí misma. Una fase = un pl
 | Fase | Plan | Alcance | Estado |
 |------|------|---------|--------|
 | 1 | [2026-06-11-fase-1-fundacion-y-portfolio-manager.md](2026-06-11-fase-1-fundacion-y-portfolio-manager.md) | Scaffolding Next.js · esquema Supabase completo · auth · shell con sidebar · Portfolio Manager (CRUD assets/transactions) · precios manuales · Dashboard v1 (KPIs + distribución + posiciones) | **Planificada** |
-| 2 | _(pendiente)_ | Market Data Service: adaptadores Yahoo Finance / CoinGecko / Alpha Vantage, caché en `price_cache`, página `/data-sources` con estado OK/ERROR por fuente, snapshots diarios | Pendiente |
+| 2 | [2026-06-15-fase-2-market-data-service.md](2026-06-15-fase-2-market-data-service.md) | Market Data Service: adaptadores Yahoo Finance / CoinGecko / Alpha Vantage, caché en `price_cache`, página `/data-sources` con estado OK/ERROR por fuente, snapshots (on-demand, cron-ready) | **Implementada** |
 | 3 | _(pendiente)_ | Analytics Engine: retornos, benchmarks, correlaciones, página `/analytics`, gráfica de rendimiento en dashboard + selector de período global (1S · 1M · 3M · 1A · Todo) | Pendiente |
 | 4 | _(pendiente)_ | Backtesting Engine: 4 estrategias (Momentum, Rebalanceo, DCA, Buy & Hold + SL/TP), métricas (Retorno, Sharpe, Max Drawdown, vs S&P 500), página `/backtest` | Pendiente |
 | 5 | _(pendiente)_ | Scenario Simulator: what-if, estrés, rebalanceo simulado, página `/scenarios` | Pendiente |
