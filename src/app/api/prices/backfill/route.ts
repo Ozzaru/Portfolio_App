@@ -1,0 +1,45 @@
+import { NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
+import { defaultFetcher } from '@/lib/market-data/http'
+import { createYahooAdapter } from '@/lib/market-data/yahoo'
+import { createCoinGeckoAdapter } from '@/lib/market-data/coingecko'
+import { createAlphaVantageAdapter } from '@/lib/market-data/alpha-vantage'
+import { backfillHistory, type AssetRef } from '@/lib/market-data/refresh'
+import { isoYearsAgo } from '@/lib/market-data/dates'
+
+export async function POST() {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { data: assets, error: aErr } = await supabase.from('assets').select('ticker, asset_type')
+  if (aErr) return NextResponse.json({ error: aErr.message }, { status: 500 })
+
+  const apiKey = process.env.ALPHA_VANTAGE_API_KEY
+  const adapters = {
+    yahoo: createYahooAdapter(defaultFetcher),
+    coingecko: createCoinGeckoAdapter(defaultFetcher),
+    alphaVantage: apiKey ? createAlphaVantageAdapter(defaultFetcher, apiKey) : undefined,
+  }
+
+  const fromISO = isoYearsAgo(5)
+  const { rows, results } = await backfillHistory((assets ?? []) as AssetRef[], fromISO, adapters)
+
+  // Upsert por lotes (idempotente). Lotes de 500 para no exceder límites de payload.
+  for (let i = 0; i < rows.length; i += 500) {
+    const batch = rows.slice(i, i + 500).map((r) => ({
+      ticker: r.ticker,
+      price: r.price,
+      price_date: r.date,
+      source: r.source,
+    }))
+    const { error: upErr } = await supabase
+      .from('price_cache')
+      .upsert(batch, { onConflict: 'ticker,price_date,source' })
+    if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
+  }
+
+  return NextResponse.json({ results, inserted: rows.length })
+}
