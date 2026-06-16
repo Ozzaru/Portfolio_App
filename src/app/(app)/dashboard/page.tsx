@@ -2,7 +2,21 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import {
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+} from 'recharts'
+import { PeriodSelector } from '@/components/period-selector'
+import { usePeriod, useBenchmark } from '@/lib/hooks/use-prefs'
 
 interface Position {
   assetId: string
@@ -23,6 +37,12 @@ interface Totals {
   totalPnlPct: number
   assetCount: number
   dailyPnl: number
+}
+
+interface SeriesPoint {
+  date: string
+  portfolio: number
+  benchmark: number | null
 }
 
 const COLORS = ['#3b82f6', '#22c55e', '#f97316', '#818cf8', '#ec4899', '#14b8a6', '#eab308', '#f43f5e']
@@ -54,6 +74,18 @@ export default function DashboardPage() {
         }
       })
   }, [])
+
+  const [period, setPeriod] = usePeriod()
+  const [benchmark] = useBenchmark()
+  const [series, setSeries] = useState<SeriesPoint[]>([])
+
+  useEffect(() => {
+    fetch(`/api/analytics?period=${period}&benchmark=${benchmark}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data) setSeries(data.series as SeriesPoint[])
+      })
+  }, [period, benchmark])
 
   const allocation = positions
     .filter((p) => p.marketValue !== null)
@@ -148,9 +180,37 @@ export default function DashboardPage() {
         </section>
       </div>
 
-      <p className="text-xs text-slate-600">
-        La gráfica de rendimiento histórico y el selector de período llegan en la Fase 3 (requieren snapshots de la Fase 2).
-      </p>
+      <section className="rounded-lg border border-slate-800 bg-slate-900 p-4">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-slate-200">Rendimiento</h2>
+          <PeriodSelector value={period} onChange={setPeriod} />
+        </div>
+        {series.length < 2 ? (
+          <p className="py-10 text-center text-sm text-slate-500">
+            Registra transacciones y corre el backfill de históricos en{' '}
+            <a href="/data-sources" className="text-blue-400 underline">
+              Fuentes de datos
+            </a>{' '}
+            para ver el rendimiento.
+          </p>
+        ) : (
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={series}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 11 }} minTickGap={40} />
+                <YAxis tick={{ fill: '#64748b', fontSize: 11 }} domain={['auto', 'auto']} />
+                <Tooltip
+                  contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', color: '#e2e8f0' }}
+                />
+                <Legend />
+                <Line type="monotone" dataKey="portfolio" name="Portafolio" stroke="#3b82f6" dot={false} />
+                <Line type="monotone" dataKey="benchmark" name="Benchmark" stroke="#22c55e" dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </section>
     </div>
   )
 }
