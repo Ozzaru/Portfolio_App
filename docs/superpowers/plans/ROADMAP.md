@@ -7,7 +7,7 @@ Cada fase produce software funcional y testeable por sí misma. Una fase = un pl
 |------|------|---------|--------|
 | 1 | [2026-06-11-fase-1-fundacion-y-portfolio-manager.md](2026-06-11-fase-1-fundacion-y-portfolio-manager.md) | Scaffolding Next.js · esquema Supabase completo · auth · shell con sidebar · Portfolio Manager (CRUD assets/transactions) · precios manuales · Dashboard v1 (KPIs + distribución + posiciones) | **Planificada** |
 | 2 | [2026-06-15-fase-2-market-data-service.md](2026-06-15-fase-2-market-data-service.md) | Market Data Service: adaptadores Yahoo Finance / CoinGecko / Alpha Vantage, caché en `price_cache`, página `/data-sources` con estado OK/ERROR por fuente, snapshots (on-demand, cron-ready) | **Implementada** |
-| 3 | _(pendiente)_ | Analytics Engine: retornos, benchmarks, correlaciones, página `/analytics`, gráfica de rendimiento en dashboard + selector de período global (1S · 1M · 3M · 1A · Todo) | Pendiente |
+| 3 | [2026-06-16-fase-3-analytics-engine.md](2026-06-16-fase-3-analytics-engine.md) | Analytics Engine: retornos (TWR), benchmarks, correlaciones, página `/analytics`, gráfica de rendimiento en dashboard + selector de período global (1S · 1M · 3M · 1A · Todo) | **Implementada** |
 | 4 | _(pendiente)_ | Backtesting Engine: 4 estrategias (Momentum, Rebalanceo, DCA, Buy & Hold + SL/TP), métricas (Retorno, Sharpe, Max Drawdown, vs S&P 500), página `/backtest` | Pendiente |
 | 5 | _(pendiente)_ | Scenario Simulator: what-if, estrés, rebalanceo simulado, página `/scenarios` | Pendiente |
 | 6 | _(pendiente)_ | Alerts System: precio / % cambio / drift de rebalanceo, notificación email, páginas `/alerts` y `/settings` | Pendiente |
