@@ -152,18 +152,18 @@ export default function DataSourcesPage() {
           <thead>
             <tr className="border-b border-slate-800 text-xs uppercase text-slate-500">
               <th className="py-2">Ticker</th>
-              <th className="text-right">Precio</th>
-              <th>Fecha</th>
-              <th>Fuente</th>
+              <th className="px-4 text-right">Precio</th>
+              <th className="px-4">Fecha</th>
+              <th className="px-4">Fuente</th>
             </tr>
           </thead>
           <tbody>
             {prices.map((p) => (
               <tr key={p.id} className="border-b border-slate-900">
                 <td className="py-2 font-semibold">{p.ticker}</td>
-                <td className="text-right">{Number(p.price).toLocaleString()}</td>
-                <td>{p.price_date}</td>
-                <td className="text-slate-500">{p.source}</td>
+                <td className="px-4 text-right">{Number(p.price).toLocaleString()}</td>
+                <td className="px-4">{p.price_date}</td>
+                <td className="px-4 text-slate-500">{p.source}</td>
               </tr>
             ))}
             {prices.length === 0 && (

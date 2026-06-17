@@ -7,6 +7,7 @@ import { createCoinGeckoAdapter } from '@/lib/market-data/coingecko'
 import { createAlphaVantageAdapter } from '@/lib/market-data/alpha-vantage'
 import { backfillHistory, type AssetRef } from '@/lib/market-data/refresh'
 import { isoYearsAgo } from '@/lib/market-data/dates'
+import { fetchAllRows } from '@/lib/supabase/paginate'
 import { computeAnalytics } from '@/lib/analytics/engine'
 import { benchmarkPreset } from '@/lib/analytics/benchmarks'
 import type { Period, PricePointAdj, PriceSeriesByTicker } from '@/lib/analytics/types'
@@ -73,15 +74,29 @@ export async function GET(request: Request) {
   const priceSeries: PriceSeriesByTicker = new Map()
   let benchmarkSeries: PricePointAdj[] | null = null
   if (wantedTickers.length > 0) {
-    const { data: priceRows, error: pErr } = await supabase
-      .from('price_cache')
-      .select('ticker, price, adj_price, price_date')
-      .in('ticker', wantedTickers)
-      .order('price_date', { ascending: true })
-    if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 })
+    // Paginado: un select sin .range() queda topado al "Max rows" de Supabase
+    // (1000) y, con orden ascendente, descartaría los precios MÁS recientes.
+    // Orden total determinista (price_date, ticker, source) para no perder ni
+    // duplicar filas entre páginas; price_date asc lo exige el motor (priceAsOf).
+    type PriceCacheRow = { ticker: string; price: number; adj_price: number | null; price_date: string }
+    let priceRows: PriceCacheRow[]
+    try {
+      priceRows = await fetchAllRows<PriceCacheRow>((from, to) =>
+        supabase
+          .from('price_cache')
+          .select('ticker, price, adj_price, price_date')
+          .in('ticker', wantedTickers)
+          .order('price_date', { ascending: true })
+          .order('ticker', { ascending: true })
+          .order('source', { ascending: true })
+          .range(from, to),
+      )
+    } catch (e) {
+      return NextResponse.json({ error: e instanceof Error ? e.message : 'price_cache error' }, { status: 500 })
+    }
 
     const byTicker = new Map<string, PricePointAdj[]>()
-    for (const row of priceRows ?? []) {
+    for (const row of priceRows) {
       const arr = byTicker.get(row.ticker) ?? []
       const price = Number(row.price)
       arr.push({
