@@ -42,3 +42,20 @@ export const priceInputSchema = z.object({
   priceDate: z.string().regex(DATE_RE, 'formato esperado YYYY-MM-DD'),
 })
 export type PriceInput = z.infer<typeof priceInputSchema>
+
+export const backtestConfigSchema = z.object({
+  targetWeights: z
+    .record(z.string(), z.coerce.number())
+    .refine((w) => Object.keys(w).length > 0, 'targetWeights no puede estar vacío')
+    .transform((w) => {
+      const out: Record<string, number> = {}
+      for (const [t, v] of Object.entries(w)) out[t.trim().toUpperCase()] = v
+      return out
+    }),
+  frequency: z.enum(['monthly', 'quarterly']),
+  from: z.string().regex(DATE_RE, 'formato esperado YYYY-MM-DD'),
+  to: z.string().regex(DATE_RE, 'formato esperado YYYY-MM-DD'),
+  initialCapital: z.coerce.number().positive(),
+  weightsFromCurrent: z.coerce.boolean().default(false),
+})
+export type BacktestConfigInput = z.infer<typeof backtestConfigSchema>

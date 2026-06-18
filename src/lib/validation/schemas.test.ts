@@ -4,6 +4,7 @@ import {
   assetInputSchema,
   transactionInputSchema,
   priceInputSchema,
+  backtestConfigSchema,
 } from '@/lib/validation/schemas'
 
 const UUID = '00000000-0000-4000-8000-000000000000'
@@ -66,5 +67,33 @@ describe('priceInputSchema', () => {
 
   it('rechaza precio cero o negativo', () => {
     expect(priceInputSchema.safeParse({ ticker: 'BTC', price: '0', priceDate: '2026-06-10' }).success).toBe(false)
+  })
+})
+
+describe('backtestConfigSchema', () => {
+  const base = {
+    targetWeights: { AAPL: 0.6, SPCX: 0.4 },
+    frequency: 'monthly',
+    from: '2021-06-17',
+    to: '2026-06-17',
+    initialCapital: 10000,
+  }
+  it('acepta una config válida y normaliza tickers a mayúsculas', () => {
+    const r = backtestConfigSchema.parse({ ...base, targetWeights: { aapl: 0.6, spcx: 0.4 } })
+    expect(r.targetWeights).toEqual({ AAPL: 0.6, SPCX: 0.4 })
+    expect(r.weightsFromCurrent).toBe(false)
+  })
+  it('coacciona capital string (input de formulario)', () => {
+    const r = backtestConfigSchema.parse({ ...base, initialCapital: '10000' })
+    expect(r.initialCapital).toBe(10000)
+  })
+  it('rechaza frecuencia desconocida', () => {
+    expect(backtestConfigSchema.safeParse({ ...base, frequency: 'weekly' }).success).toBe(false)
+  })
+  it('rechaza targetWeights vacío', () => {
+    expect(backtestConfigSchema.safeParse({ ...base, targetWeights: {} }).success).toBe(false)
+  })
+  it('rechaza fecha mal formada', () => {
+    expect(backtestConfigSchema.safeParse({ ...base, from: '06/2021' }).success).toBe(false)
   })
 })
