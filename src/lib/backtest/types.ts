@@ -39,3 +39,14 @@ export interface BacktestResult {
   warnings: string[]
   benchmarkError: string | null
 }
+
+import type { PriceSeriesByTicker, PricePointAdj } from '@/lib/analytics/types'
+
+export interface RunBacktestInput {
+  config: BacktestConfig
+  priceSeries: PriceSeriesByTicker // series de los activos de la cartera
+  benchmarkSeries: PricePointAdj[] | null
+  benchmarkTicker: string
+  stockEtfTickers: string[]
+  cryptoTickers: string[]
+}
