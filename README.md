@@ -38,13 +38,14 @@ Los datos de mercado se cachean en Supabase para evitar llamadas repetidas a las
 
 ## Backtesting Engine — estrategias
 
-1. **Momentum / Tendencia** — SMA Crossover (50/200), RSI, ruptura de máximos
-2. **Rebalanceo Periódico** — mensual/trimestral, por threshold, peso objetivo
-3. **Dollar Cost Averaging (DCA)** — inversión fija periódica, vs lump sum
-4. **Buy & Hold con Stop-Loss** — stop-loss y take-profit configurables
+**MVP implementado (Fase 4):** enfoque **portfolio-céntrico** (estilo PORT/PRTU de Bloomberg) — el caso de uso es gestionar la cartera personal, no hacer trading de activos sueltos. Una sola estrategia:
 
-**Flujo:** Definir Estrategia → Seleccionar Período → Ejecutar (históricos vía API) → Ver Resultados.
-**Métricas:** Retorno Total · Sharpe Ratio · Max Drawdown · vs S&P 500.
+2. **Rebalanceo Periódico** — sobre la cartera real, pesos objetivo editables (default 1/N), mensual/trimestral. Compara **rebalanceado vs buy & hold vs S&P 500**.
+
+Las demás estrategias del diseño original quedan **fuera del MVP** (son de *trader*, no de gestor de cartera): Momentum/SMA Crossover/RSI/ruptura, Buy & Hold con Stop-Loss/Take-Profit. **DCA** es un fast-follow del mismo motor de cartera. Ver [spec de Fase 4](docs/superpowers/specs/2026-06-17-fase-4-backtesting-rebalanceo-design.md).
+
+**Flujo:** Definir pesos/frecuencia/período → Ejecutar (históricos vía API, auto-backfill) → Ver Resultados.
+**Métricas:** Retorno Total · CAGR · Sharpe Ratio · Max Drawdown · vs S&P 500 (exceso geométrico) · Turnover.
 
 ## Diseño
 
