@@ -116,9 +116,9 @@ Modelar un costo configurable en bps por turnover queda como fast-follow.
 
 ### 5. Frecuencia de rebalanceo
 
-**Mensual** (def.) o **Trimestral**. Los rebalanceos ocurren en el **primer día operativo de cada mes**
-(trimestral: cada 3 meses) **posterior a `t0`**. En `t0` solo se hace la **asignación inicial**, no cuenta como
-rebalanceo (turnover 0). Si el período es más corto que un intervalo, "rebalanceado" coincide con "buy & hold".
+**Mensual** (def.) o **Trimestral**. Una fecha de rebalanceo es el **primer día operativo de cada mes**
+(trimestral: meses 0, +3, +6, …, contados desde `t0`). No se rebalancea en `t0` (ahí es la asignación inicial).
+Si el período es más corto que un intervalo, "rebalanceado" coincide con "buy & hold".
 
 ### 6. Período y datos
 
