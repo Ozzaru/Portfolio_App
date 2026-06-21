@@ -10,6 +10,9 @@ import type { BacktestResult, RunBacktestInput, StrategyLine } from './types'
 const HINDSIGHT_WARNING =
   'Pesos = composición actual: sesgo de retrospectiva (el backtest sobrestima el rendimiento).'
 
+// Por debajo de ~1 mes operativo, anualizar (252/N) infla CAGR y Sharpe a valores absurdos.
+const MIN_TRADING_DAYS_TO_ANNUALIZE = 21
+
 function toLine(sim: { equityCurve: StrategyLine['equityCurve']; turnoverTotal: number }): StrategyLine {
   return { ...lineMetrics(sim.equityCurve), equityCurve: sim.equityCurve, turnoverTotal: sim.turnoverTotal }
 }
@@ -17,9 +20,35 @@ function toLine(sim: { equityCurve: StrategyLine['equityCurve']; turnoverTotal: 
 export function runBacktest(input: RunBacktestInput): BacktestResult {
   const { config, priceSeries, benchmarkSeries, benchmarkTicker, stockEtfTickers, cryptoTickers } = input
   const weights = normalizeWeights(config.targetWeights)
+  const tickers = Object.keys(weights)
+  const warnings: string[] = []
 
-  const dates = tradingDates(priceSeries, stockEtfTickers, cryptoTickers, config.from, config.to)
+  const allDates = tradingDates(priceSeries, stockEtfTickers, cryptoTickers, config.from, config.to)
+  if (allDates.length < 2) throw new Error('el rango no tiene suficientes fechas operativas')
+
+  // Recorte de cobertura: cada activo necesita precio en dates[0]. Un activo que arranca
+  // después del inicio natural del eje (p. ej. una IPO reciente) recorta el inicio del
+  // backtest a su primera fecha, en vez de hacer fallar todo. El recorte se mide contra
+  // allDates[0] (primer día operativo), no contra config.from (fecha de calendario que
+  // casi siempre cae en fin de semana/feriado).
+  const naturalStart = allDates[0]
+  let effectiveFrom = naturalStart
+  for (const t of tickers) {
+    const first = priceSeries.get(t)?.[0]?.date
+    if (!first) throw new Error(`${t} no tiene datos en el rango seleccionado`)
+    if (first > naturalStart) {
+      warnings.push(`histórico de ${t} empieza en ${first}: backtest recortado a esa fecha`)
+      if (first > effectiveFrom) effectiveFrom = first
+    }
+  }
+  const dates = allDates.filter((d) => d >= effectiveFrom)
   if (dates.length < 2) throw new Error('el rango no tiene suficientes fechas operativas')
+
+  if (dates.length < MIN_TRADING_DAYS_TO_ANNUALIZE) {
+    warnings.push(
+      `ventana de ${dates.length} días operativos: CAGR y Sharpe anualizados no son fiables (ventana < 1 mes).`
+    )
+  }
 
   const rebal = rebalanceDates(dates, config.frequency)
   const rebalanced = toLine(simulateLine(dates, priceSeries, weights, rebal, config.initialCapital))
@@ -38,11 +67,6 @@ export function runBacktest(input: RunBacktestInput): BacktestResult {
     benchmarkError = `benchmark ${benchmarkTicker} no disponible`
   }
 
-  const warnings: string[] = []
-  for (const t of cryptoTickers) {
-    const first = priceSeries.get(t)?.[0]?.date
-    if (first && first > config.from) warnings.push(`histórico de ${t} empieza en ${first} (recortado)`)
-  }
   if (config.weightsFromCurrent) warnings.push(HINDSIGHT_WARNING)
 
   const vsBenchmark = benchmark

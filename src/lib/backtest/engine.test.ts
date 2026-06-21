@@ -57,11 +57,45 @@ describe('runBacktest', () => {
     expect(r.warnings.some((w) => /retrospectiva/i.test(w))).toBe(true)
   })
 
-  it('activo del portafolio sin precio al inicio → lanza nombrando el ticker', () => {
+  it('activo del portafolio que empieza tarde → recorta el inicio y avisa, no lanza', () => {
+    const D = ['2024-01-02', '2024-01-03', '2024-01-04', '2024-01-05']
+    const priceSeries: PriceSeriesByTicker = new Map([
+      ['A', mk(D, [100, 110, 120, 130])],
+      ['B', mk(['2024-01-04', '2024-01-05'], [100, 110])], // IPO el 2024-01-04
+    ])
+    const r = runBacktest(
+      baseInput({
+        priceSeries,
+        config: { targetWeights: { A: 0.5, B: 0.5 }, frequency: 'monthly', from: '2024-01-01', to: '2024-01-31', initialCapital: 1000 },
+        benchmarkSeries: mk(D, [100, 100, 100, 100]),
+      })
+    )
+    // el eje arranca el primer día con TODOS los tickers vivos (no en el arranque de A)
+    expect(r.lines.rebalanced.equityCurve.map((p) => p.date)).toEqual(['2024-01-04', '2024-01-05'])
+    expect(r.warnings.some((w) => /B/.test(w) && /2024-01-04/.test(w))).toBe(true)
+  })
+
+  it('activo del portafolio sin datos en el rango → error claro nombrando el ticker', () => {
     const priceSeries: PriceSeriesByTicker = new Map([
       ['A', mk(DATES, [100, 200, 100])],
-      ['B', [{ date: '2024-01-04', price: 100, adjPrice: 100 }]], // empieza tarde
+      ['B', []], // sin datos en el rango
     ])
     expect(() => runBacktest(baseInput({ priceSeries }))).toThrow(/B/)
+  })
+
+  it('ventana demasiado corta para anualizar → nota sobre CAGR/Sharpe', () => {
+    const r = runBacktest(baseInput()) // 3 días operativos << 1 mes
+    expect(r.warnings.some((w) => /anualiz/i.test(w) && /(CAGR|Sharpe)/.test(w))).toBe(true)
+  })
+
+  it('ventana suficientemente larga → sin nota de anualización', () => {
+    const longDates = Array.from({ length: 25 }, (_, i) => `2024-01-${String(i + 2).padStart(2, '0')}`)
+    const vals = longDates.map((_, i) => 100 + i)
+    const priceSeries: PriceSeriesByTicker = new Map([
+      ['A', mk(longDates, vals)],
+      ['B', mk(longDates, vals)],
+    ])
+    const r = runBacktest(baseInput({ priceSeries, benchmarkSeries: mk(longDates, vals) }))
+    expect(r.warnings.some((w) => /anualiz/i.test(w))).toBe(false)
   })
 })
