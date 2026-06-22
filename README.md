@@ -20,7 +20,7 @@ App web de portafolio personal: gestión de posiciones, analítica, backtesting 
 | Market Data Service | Yahoo Finance · CoinGecko · Alpha Vantage · entrada manual |
 | Analytics Engine | P&L · retornos · alocación · benchmarks |
 | Backtesting Engine | estrategias · históricos · métricas (Sharpe, Drawdown) |
-| Scenario Simulator | what-if · estrés · rebalanceo |
+| Scenario Simulator | **stress test** (shock de mercado × beta + overrides) · vs S&P estresado · what-if/rebalanceo = fast-follow |
 | Alerts System | precio · % cambio · rebalanceo · email |
 
 ## Tablas (Supabase / PostgreSQL)
