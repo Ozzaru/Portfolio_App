@@ -23,7 +23,8 @@ con gracia ante carteras con activos sin histórico suficiente (p. ej. una IPO r
 - Overrides idiosincráticos por activo (reemplazan el shock derivado de beta).
 - Outputs: impacto total ($ y %), desglose por activo, ranking de peores activos,
   cartera vs S&P estresado, gráfica de barras.
-- Degradación con gracia: activos con histórico insuficiente caen a `beta = 1.0` + warning.
+- Degradación con gracia: activos con histórico insuficiente caen a una beta de fallback
+  según su `asset_type` (Decisión 3) + warning.
 
 ### Fuera del MVP (fast-follow)
 - What-if de composición (agregar/quitar posiciones, cambiar pesos hipotéticamente).
@@ -53,27 +54,81 @@ shock_i = override_i  (si el usuario lo fijó)
 en las fechas **comunes** entre el activo y el benchmark (SPY), reusando `assetReturn` /
 `priceAsOf` de `analytics/series`. Benchmark = **SPY** (S&P 500), consistente con Fase 3/4.
 
+- **Firma pura:** `computeBeta(assetReturns, benchReturns)` opera sobre **arrays de
+  retornos ya alineados**. El **ventaneo es responsabilidad del caller** (motor/ruta), que
+  corta los retornos a la ventana deseada antes de llamar. No se bakean fechas dentro de
+  la función pura: el fast-follow de replay histórico solo tendrá que pasar los retornos
+  de la ventana pre-shock, sin acoplar `computeBeta` a lógica de fechas.
 - **Ventana:** todo el histórico común disponible que cargue la ruta (lookback acotado,
   ver §4). No se introduce un parámetro de ventana en el MVP.
 - **Sin clamp** de betas extremas en el MVP (se muestran tal cual). Nota para fast-follow:
   podría acotarse a un rango razonable.
+- **Limitación de régimen (documentada):** la beta histórica se calibra sobre el lookback
+  reciente; si ese tramo fue de baja volatilidad, las betas subestiman el riesgo de cola
+  de un evento extremo. No se corrige en el MVP (se mitiga con el disclaimer de la
+  Decisión 7); el fast-follow de replay histórico permitirá estimar la beta en la ventana
+  previa al shock concreto (2020/2008).
 
-### Decisión 3 — Fallback por cobertura insuficiente
+### Decisión 3 — Fallback por cobertura insuficiente (consciente del tipo de activo)
 Si un activo tiene **menos de `MIN_BETA_OBS = 20`** retornos diarios comunes con el
-benchmark, su beta es poco fiable → **`beta_i = 1.0`** (se mueve como el mercado) y se
-emite un **warning** nombrando el activo. Esto cubre el caso de una IPO reciente (p. ej.
-SPCX con ~5 días de histórico), mismo patrón de degradación con gracia que la Fase 4.
-Un override del usuario sobre ese activo tiene precedencia sobre el fallback.
+benchmark, su beta histórica es poco fiable. En vez de asumir `beta = 1.0` para todo (lo
+que haría que una posición de **`cash`** "perdiera" 20% en un crash — absurdo), el
+fallback usa el `asset_type` real del enum del esquema (`stock`, `etf`, `crypto`, `cash`,
+`other`):
+
+| `asset_type` | fallback β | razón |
+|---|---|---|
+| `stock`, `etf`, `other` | 1.0 | proxy de mercado neutral |
+| `crypto` | 1.5 | alta beta sistémica en risk-off |
+| `cash` | 0.0 | no co-mueve con el mercado |
+
+Se emite un **warning** nombrando el activo y la beta de fallback aplicada. El `1.5` de
+crypto es una **heurística documentada y tuneable** (la beta crypto-S&P es inestable), no
+un hecho; el **override** del usuario tiene precedencia sobre el fallback y es la válvula
+de escape. Cubre el caso de IPO reciente (SPCX, ~5 días) con la beta del tipo de activo,
+mismo patrón de degradación con gracia que la Fase 4. Las constantes viven en `beta.ts`
+como una tabla `FALLBACK_BETA_BY_TYPE`.
 
 ### Decisión 4 — Comparación vs S&P estresado
 Por definición el escenario fija el movimiento del S&P en `marketShock`, así que el S&P
 estresado cae exactamente `marketShock`. Se muestra "tu cartera −X% vs S&P −Y%", donde
-−X% es el impacto total de la cartera y la **beta agregada** `Σ wᵢ·betaᵢ` explica la
-diferencia. No requiere datos adicionales; cae del propio cálculo.
+−X% es el impacto total de la cartera (calculado **bottom-up**, ver Decisión 6) y la
+**beta agregada** `Σ wᵢ·betaᵢ` es una **estadística descriptiva** que ayuda a leer la
+diferencia. La beta agregada **nunca** es la base del cálculo del P&L.
 
 ### Decisión 5 — Convención de signo
 Shocks en fracción decimal con signo: `-0.20` = caída del 20%, `+0.10` = subida del 10%.
 La UI acepta porcentajes y convierte.
+
+### Decisión 6 — Valuación (raw vs adjusted) y P&L bottom-up
+Para no reintroducir la paradoja raw/adjusted de la Fase 3, los planos quedan separados:
+- **Beta** → sobre **retornos de cierre ajustado** (`adjPrice`), que aísla dividendos/splits
+  del ruido de covarianza (Decisión 2).
+- **Valuación en $** → sobre **precio crudo actual** (`price`) × cantidad cruda, igual que
+  `portfolioRawValue` (Fase 3).
+
+Flujo por activo:
+```
+valueBefore_i = price_crudo_actual_i × qty_i
+shock_i       = override_i ?? (beta_i × marketShock)   // beta de retornos ajustados
+valueAfter_i  = valueBefore_i × (1 + shock_i)
+```
+
+El **P&L del portafolio es bottom-up**, nunca `betaAgregada × marketShock`:
+```
+P&L%_portfolio = (Σ valueAfter_i / Σ valueBefore_i) − 1
+```
+Así, si el usuario fuerza un override (p. ej. AAPL −50% ignorando su beta), el total cuadra
+exactamente con la suma de las partes. Los pesos `wᵢ` de la beta agregada también se
+calculan sobre valor crudo (`valueBefore_i / Σ valueBefore`).
+
+### Decisión 7 — Disclaimer de riesgo de cola (no toca el cálculo)
+La beta mide co-movimiento promedio en condiciones normales; en colapsos severos las
+correlaciones tienden a 1 y las betas reales suben. El banner de resultados incluye una
+**nota estática**: *"El simulador usa sensibilidad histórica promedio (beta). En colapsos
+severos las correlaciones tienden a aumentar, por lo que la pérdida real podría ser
+mayor."* Es honestidad metodológica (mismo espíritu que las notas de fricción/Sharpe de la
+Fase 4), no un cambio de modelo.
 
 ## 3. Arquitectura
 
@@ -81,13 +136,15 @@ La UI acepta porcentajes y convierte.
 - **`types.ts`** — `ScenarioConfig` (`marketShock`, `overrides`), `AssetStress`
   (ticker, weight, beta, betaFallback, shockApplied, valueBefore, valueAfter,
   lossContribAbs), `StressResult` (portfolio totals, vsBenchmark, perAsset[], warnings[]).
-- **`beta.ts`** — `computeBeta(assetReturns, benchReturns)` y la lógica de fallback
-  (`MIN_BETA_OBS`). Reusa los retornos de `analytics/series`.
-- **`stress.ts`** — aplica el shock a cada posición valuada: `shock_i = override ?? beta·marketShock`,
-  calcula `valueAfter` y `lossContribAbs`.
-- **`engine.ts`** — `runScenario(input)`: betas → stress por activo → agrega valor nuevo,
-  P&L ($ y %), beta agregada de cartera, ranking por contribución a la pérdida, junta
-  warnings.
+- **`beta.ts`** — `computeBeta(assetReturns, benchReturns)` (pura, sobre arrays alineados)
+  y la lógica de fallback: `MIN_BETA_OBS` + tabla `FALLBACK_BETA_BY_TYPE` por `asset_type`
+  (Decisión 3). Reusa los retornos de `analytics/series`.
+- **`stress.ts`** — aplica el shock a cada posición valuada a **precio crudo**:
+  `valueBefore = price·qty`, `shock_i = override ?? beta·marketShock`,
+  `valueAfter = valueBefore·(1+shock_i)`, `lossContribAbs` (Decisión 6).
+- **`engine.ts`** — `runScenario(input)`: betas → stress por activo → agrega **bottom-up**
+  (`Σ valueAfter / Σ valueBefore − 1`), P&L ($ y %), beta agregada de cartera (descriptiva),
+  ranking por contribución a la pérdida, junta warnings (fallbacks + precios faltantes).
 
 **Reusa:** `analytics/series` (`assetReturn`, `priceAsOf`), `portfolio/holdings`
 (`computeHoldings`), `supabase/paginate` (`fetchAllRows`).
@@ -113,6 +170,7 @@ Estilo `/backtest`:
     shock aplicado, valor antes/después, contribución en $.
   - **Gráfica de barras** (recharts `BarChart`): valor antes vs después por activo.
   - Banner ámbar de warnings (betas en fallback, precios faltantes).
+  - **Nota estática de riesgo de cola** (Decisión 7) bajo los resultados.
 
 ## 4. Bordes y datos
 
@@ -128,10 +186,13 @@ Estilo `/backtest`:
 ## 5. Testing (TDD, Vitest)
 
 Dominio puro, mismo enfoque que Fases 3-4:
-- `beta.ts`: cálculo correcto vs caso conocido; fallback bajo `MIN_BETA_OBS`.
-- `stress.ts`: precedencia de override sobre beta; valor después y contribución.
-- `engine.ts`: agregación (valor/P&L), beta agregada y comparación vs S&P, ranking por
-  pérdida, ensamblado de warnings (fallback + precio faltante).
+- `beta.ts`: cálculo correcto vs caso conocido; fallback por `asset_type` bajo
+  `MIN_BETA_OBS` (`cash`→0, `crypto`→1.5, `stock`/`etf`/`other`→1.0).
+- `stress.ts`: precedencia de override sobre beta; valuación a precio crudo; valor después
+  y contribución.
+- `engine.ts`: **P&L bottom-up cuadra con la suma de las partes incluso con un override**
+  (guard de Decisión 6); beta agregada descriptiva y comparación vs S&P; ranking por
+  pérdida; ensamblado de warnings (fallback + precio faltante).
 - Validación: `scenarioConfigSchema` rechaza configs inválidas.
 
 Lint y build verdes antes de cerrar la fase. Verificación e2e en navegador (requiere
@@ -140,7 +201,12 @@ login) como cierre, igual que en la Fase 4.
 ## 6. Decisiones clave (resumen)
 1. MVP = solo stress test por shocks (what-if / rebalanceo simulado / replay = fast-follow).
 2. Shock de mercado propagado por beta + overrides idiosincráticos.
-3. Beta = cov/var sobre retornos de cierre ajustado vs SPY; sin clamp en MVP.
-4. Fallback `beta = 1.0` + warning si < 20 obs comunes (cubre IPOs recientes como SPCX).
-5. vs S&P estresado cae del cálculo (S&P cae `marketShock`; beta agregada explica la diferencia).
-6. Sin persistencia, sin migraciones; ad-hoc como el backtest.
+3. Beta = cov/var sobre retornos de cierre ajustado vs SPY; `computeBeta` pura sobre arrays
+   (ventaneo = responsabilidad del caller); sin clamp en MVP.
+4. Fallback de beta **por `asset_type`** + warning si < 20 obs comunes: `cash`→0,
+   `crypto`→1.5 (heurística), `stock`/`etf`/`other`→1.0. El override tiene precedencia.
+5. Valuación a **precio crudo**; P&L del portafolio **bottom-up** (`Σ after/Σ before − 1`),
+   no `betaAgregada × shock`. La beta agregada es solo descriptiva.
+6. vs S&P estresado: el S&P cae `marketShock`; se compara con el P&L bottom-up de la cartera.
+7. Disclaimer de riesgo de cola en la UI (correlaciones → 1 en crisis); no toca el cálculo.
+8. Sin persistencia, sin migraciones; ad-hoc como el backtest.
