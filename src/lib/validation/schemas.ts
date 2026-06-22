@@ -59,3 +59,16 @@ export const backtestConfigSchema = z.object({
   weightsFromCurrent: z.coerce.boolean().default(false),
 })
 export type BacktestConfigInput = z.infer<typeof backtestConfigSchema>
+
+export const scenarioConfigSchema = z.object({
+  marketShock: z.coerce.number(),
+  overrides: z
+    .record(z.string(), z.coerce.number())
+    .default({})
+    .transform((o) => {
+      const out: Record<string, number> = {}
+      for (const [t, v] of Object.entries(o)) out[t.trim().toUpperCase()] = v
+      return out
+    }),
+})
+export type ScenarioConfigInput = z.infer<typeof scenarioConfigSchema>

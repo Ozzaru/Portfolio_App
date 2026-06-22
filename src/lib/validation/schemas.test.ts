@@ -5,6 +5,7 @@ import {
   transactionInputSchema,
   priceInputSchema,
   backtestConfigSchema,
+  scenarioConfigSchema,
 } from '@/lib/validation/schemas'
 
 const UUID = '00000000-0000-4000-8000-000000000000'
@@ -95,5 +96,20 @@ describe('backtestConfigSchema', () => {
   })
   it('rechaza fecha mal formada', () => {
     expect(backtestConfigSchema.safeParse({ ...base, from: '06/2021' }).success).toBe(false)
+  })
+})
+
+describe('scenarioConfigSchema', () => {
+  it('coacciona marketShock y normaliza overrides a mayúsculas', () => {
+    const r = scenarioConfigSchema.parse({ marketShock: '-0.2', overrides: { aapl: '-0.5' } })
+    expect(r.marketShock).toBe(-0.2)
+    expect(r.overrides).toEqual({ AAPL: -0.5 })
+  })
+  it('overrides ausente → {} por defecto', () => {
+    const r = scenarioConfigSchema.parse({ marketShock: -0.1 })
+    expect(r.overrides).toEqual({})
+  })
+  it('rechaza marketShock no numérico', () => {
+    expect(scenarioConfigSchema.safeParse({ marketShock: 'abc' }).success).toBe(false)
   })
 })
