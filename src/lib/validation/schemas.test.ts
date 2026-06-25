@@ -6,6 +6,7 @@ import {
   priceInputSchema,
   backtestConfigSchema,
   scenarioConfigSchema,
+  alertInputSchema,
 } from '@/lib/validation/schemas'
 
 const UUID = '00000000-0000-4000-8000-000000000000'
@@ -111,5 +112,23 @@ describe('scenarioConfigSchema', () => {
   })
   it('rechaza marketShock no numérico', () => {
     expect(scenarioConfigSchema.safeParse({ marketShock: 'abc' }).success).toBe(false)
+  })
+})
+
+describe('alertInputSchema', () => {
+  const UUID2 = '11111111-1111-4111-8111-111111111111'
+  it('acepta una alerta válida y coacciona threshold string', () => {
+    const r = alertInputSchema.parse({ alertType: 'price_above', assetId: UUID2, threshold: '150.5' })
+    expect(r.alertType).toBe('price_above')
+    expect(r.threshold).toBe(150.5)
+  })
+  it('rechaza tipo desconocido', () => {
+    expect(alertInputSchema.safeParse({ alertType: 'rebalance_drift', assetId: UUID2, threshold: 1 }).success).toBe(false)
+  })
+  it('rechaza threshold no positivo', () => {
+    expect(alertInputSchema.safeParse({ alertType: 'price_above', assetId: UUID2, threshold: 0 }).success).toBe(false)
+  })
+  it('rechaza assetId no-uuid', () => {
+    expect(alertInputSchema.safeParse({ alertType: 'price_above', assetId: 'x', threshold: 1 }).success).toBe(false)
   })
 })

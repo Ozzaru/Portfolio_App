@@ -72,3 +72,10 @@ export const scenarioConfigSchema = z.object({
     }),
 })
 export type ScenarioConfigInput = z.infer<typeof scenarioConfigSchema>
+
+export const alertInputSchema = z.object({
+  alertType: z.enum(['price_above', 'price_below', 'pct_change']),
+  assetId: z.string().uuid(),
+  threshold: z.coerce.number().positive(),
+})
+export type AlertInput = z.infer<typeof alertInputSchema>
