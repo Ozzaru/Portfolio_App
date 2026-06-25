@@ -21,7 +21,7 @@ App web de portafolio personal: gestión de posiciones, analítica, backtesting 
 | Analytics Engine | P&L · retornos · alocación · benchmarks |
 | Backtesting Engine | estrategias · históricos · métricas (Sharpe, Drawdown) |
 | Scenario Simulator | **stress test** (shock de mercado × beta + overrides) · vs S&P estresado · what-if/rebalanceo = fast-follow |
-| Alerts System | precio · % cambio · rebalanceo · email |
+| Alerts System | **in-app** · precio (above/below) · % cambio del día · auto al refrescar · email/drift = fast-follow |
 
 ## Tablas (Supabase / PostgreSQL)
 
