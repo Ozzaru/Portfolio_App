@@ -3,6 +3,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 const links = [
@@ -19,6 +20,15 @@ const links = [
 export default function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
+  const [triggered, setTriggered] = useState(0)
+
+  useEffect(() => {
+    fetch('/api/alerts')
+      .then((r) => (r.ok ? r.json() : { alerts: [] }))
+      .then((d: { alerts: { status: string }[] }) =>
+        setTriggered((d?.alerts ?? []).filter((a) => a.status === 'triggered').length)
+      )
+  }, [pathname])
 
   async function signOut() {
     const supabase = createClient()
@@ -38,13 +48,18 @@ export default function Sidebar() {
               key={l.href}
               href={l.href}
               aria-current={isActive ? 'page' : undefined}
-              className={`rounded px-3 py-2 text-sm ${
+              className={`flex items-center justify-between rounded px-3 py-2 text-sm ${
                 isActive
                   ? 'bg-blue-600 text-white'
                   : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
               }`}
             >
-              {l.label}
+              <span>{l.label}</span>
+              {l.href === '/alerts' && triggered > 0 && (
+                <span className="ml-2 rounded-full bg-red-600 px-1.5 text-xs font-semibold text-white">
+                  {triggered}
+                </span>
+              )}
             </Link>
           )
         })}
