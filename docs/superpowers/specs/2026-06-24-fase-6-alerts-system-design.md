@@ -43,6 +43,13 @@ analítica → backtesting → escenarios → **alertas**).
 (`status='active'`) o la borra. `active ⇄ disabled` permite silenciar sin borrar. La
 evaluación **solo mira las `active`**.
 
+**Reactivación:** el modelo one-shot **acota el re-disparo a UNO** — si reactivas una alerta
+cuya condición sigue cumpliéndose (p. ej. `price_above@150` con el precio en 155), la
+siguiente evaluación la vuelve a `triggered`; no hay bucle infinito. Para evitar esa UX
+inútil, al reactivar una alerta **ya satisfecha** la UI **avisa**: *"el precio actual ($155)
+ya cumple el umbral ($150); ajústalo o espera a que cruce de vuelta"* (Opción A de la
+revisión, sin máquina de estados `armed_waiting_reset`).
+
 ### Decisión 2 — Fricción de `pct_change` (limitación documentada del MVP)
 El ciclo one-shot encaja con cruces de precio (eventos únicos), pero la volatilidad es
 velocidad, no estado: una `pct_change` que dispara hoy queda `triggered` y **no vuelve a
@@ -103,9 +110,17 @@ rompa el UPDATE. Igual para una alerta sobre un activo sin precio en caché.
 ### Integración server (`src/lib/alerts/run.ts`)
 - **`evaluateAndPersist(supabase, userId)`** — carga alertas `active` (con ticker del asset) +
   `price_cache` (paginado, `fetchAllRows`), deriva `currentPrices`/`previousClosePrices` por la
-  regla de la Decisión 4, llama a `evaluateAlerts`, y hace `UPDATE` de las disparadas a
-  `triggered` + `triggered_at`. Devuelve las recién disparadas. Lo llaman **ambos** triggers
-  (DRY). Lee solo caché: **cero llamadas externas**.
+  regla de la Decisión 4, llama a `evaluateAlerts`, y hace
+  `UPDATE alerts SET status='triggered', triggered_at=now() WHERE id IN (…) AND status='active'`.
+  El filtro **`AND status='active'` es un lock optimista**: si el botón "Revisar ahora" y el
+  hook de `/api/prices/refresh` corren a la vez, el primero marca las filas y el segundo afecta
+  0 (no re-machaca `triggered_at` ni dispara dos veces). Devuelve las recién disparadas. Lo
+  llaman **ambos** triggers (DRY). Lee solo caché: **cero llamadas externas**.
+  - **Derivación de spot/prevClose:** sigue el patrón ya establecido en `/api/positions`
+    (`fetchAllRows` + derivar en JS), por consistencia. A escala, un **helper compartido**
+    "último+anterior por ticker" optimizable con window functions (`ROW_NUMBER()/LAG()`)
+    aplicado a `/api/positions` **y** alertas a la vez queda como fast-follow; no es necesario
+    al tamaño actual (cartera de pocos tickers).
 
 ### API
 - `GET /api/alerts` — lista las alertas del usuario (join con ticker del asset).
@@ -118,9 +133,10 @@ rompa el UPDATE. Igual para una alerta sobre un activo sin precio en caché.
 
 ### UI
 - **Página `/alerts`** (reemplaza el placeholder): formulario de creación (tipo + activo +
-  umbral, con etiqueta de unidad según el tipo), tabla de alertas con estado y acciones
-  (reactivar / silenciar / borrar), botón **"Revisar ahora"** (POST evaluate), banner de las
-  recién disparadas.
+  umbral, con etiqueta de unidad según el tipo), tabla de alertas con estado, **precio actual**
+  del ticker (de `/api/positions`) y acciones (reactivar / silenciar / borrar), botón
+  **"Revisar ahora"** (POST evaluate), banner de las recién disparadas. Al **reactivar** una
+  alerta cuya condición ya se cumple, muestra el aviso de la Decisión 1.
 - **Badge en el shell:** componente cliente en el sidebar junto a "Alertas" que consulta
   `GET /api/alerts` y muestra el nº de `triggered`.
 
@@ -150,3 +166,5 @@ rompa el UPDATE. Igual para una alerta sobre un activo sin precio en caché.
 5. Motor puro `evaluateAlerts(alerts, currentPrices, previousClosePrices)` con dos mapas estáticos; la lógica de fechas vive en `run.ts`.
 6. Auto-evaluación al refrescar precios en `try/catch` **no bloqueante**; cron-ready; lee solo caché (sin coste de API externa).
 7. Guard contra división por cero / `NaN`; sin migraciones.
+8. Reactivación: el one-shot acota el re-disparo a uno; la UI **avisa** si la condición ya se cumple (sin máquina de estados extra).
+9. `UPDATE` de disparo con **lock optimista** (`AND status='active'`) contra los dos triggers concurrentes (botón + hook de refresh).
