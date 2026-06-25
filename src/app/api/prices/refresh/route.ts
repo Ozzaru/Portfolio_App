@@ -6,6 +6,7 @@ import { createCoinGeckoAdapter } from '@/lib/market-data/coingecko'
 import { refreshQuotes, type AssetRef } from '@/lib/market-data/refresh'
 import { computeHoldings, type Transaction } from '@/lib/portfolio/holdings'
 import { computeSnapshotValue } from '@/lib/portfolio/snapshot'
+import { evaluateAndPersist } from '@/lib/alerts/run'
 
 export async function POST() {
   const supabase = await createClient()
@@ -40,6 +41,13 @@ export async function POST() {
 
   // Snapshot de hoy (idempotente por unique(user_id, snapshot_date)).
   const snapshotValue = await takeSnapshot(supabase, user.id, quotes)
+
+  // Auto-evaluación de alertas tras refrescar precios (best-effort, no bloquea el refresh).
+  try {
+    await evaluateAndPersist(supabase)
+  } catch (e) {
+    console.error('alertas: evaluación tras refresh falló:', e instanceof Error ? e.message : e)
+  }
 
   return NextResponse.json({ results, quotes: quotes.length, snapshotValue })
 }
