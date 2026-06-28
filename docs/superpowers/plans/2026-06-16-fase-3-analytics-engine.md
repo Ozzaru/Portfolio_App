@@ -85,7 +85,7 @@ alter table price_cache add column adj_price numeric;
 
 - [ ] **Step 2: Aplicar en Supabase**
 
-Ejecutar el contenido del archivo en el **SQL Editor** del proyecto Supabase (ref `fobpkqiciegpmwuiiudn`). No hay CLI local de migraciones en este proyecto (igual que `0001_init.sql`).
+Ejecutar el contenido del archivo en el **SQL Editor** de tu proyecto Supabase. No hay CLI local de migraciones en este proyecto (igual que `0001_init.sql`).
 Expected: `Success. No rows returned`. La columna `adj_price` aparece en `price_cache`.
 
 - [ ] **Step 3: Commit**
