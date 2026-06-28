@@ -69,7 +69,11 @@ export default function PortfolioPage() {
       {error && <p className="text-sm text-red-400">{error}</p>}
 
       <section>
-        <h2 className="mb-3 text-lg font-semibold text-slate-200">Activos</h2>
+        <h2 className="mb-1 text-lg font-semibold text-slate-200">Activos</h2>
+        <p className="mb-3 text-xs text-slate-500">
+          Define el instrumento (ticker, tipo y moneda). El precio no va aquí: se registra al comprar o vender en{' '}
+          <span className="text-slate-400">Transacciones</span>.
+        </p>
         <form
           className="mb-4 flex flex-wrap gap-2"
           onSubmit={async (e) => {
@@ -94,7 +98,7 @@ export default function PortfolioPage() {
             <option value="cash">Efectivo</option>
             <option value="other">Otro</option>
           </select>
-          <input name="currency" placeholder="USD" maxLength={3} className={inputCls} />
+          <input name="currency" placeholder="Moneda (USD)" maxLength={3} className={inputCls} />
           <button type="submit" className={btnCls}>Añadir activo</button>
         </form>
         <ul className="flex flex-wrap gap-2">
@@ -118,7 +122,10 @@ export default function PortfolioPage() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-lg font-semibold text-slate-200">Transacciones</h2>
+        <h2 className="mb-1 text-lg font-semibold text-slate-200">Transacciones</h2>
+        <p className="mb-3 text-xs text-slate-500">
+          Registra una compra o venta: cantidad, <span className="text-slate-400">precio por unidad</span> y fecha.
+        </p>
         <form
           className="mb-4 flex flex-wrap gap-2"
           onSubmit={async (e) => {
@@ -147,7 +154,7 @@ export default function PortfolioPage() {
             <option value="sell">Venta</option>
           </select>
           <input name="quantity" type="number" step="any" min="0" placeholder="Cantidad" required className={inputCls} />
-          <input name="price" type="number" step="any" min="0" placeholder="Precio" required className={inputCls} />
+          <input name="price" type="number" step="any" min="0" placeholder="Precio (ej. 293.08)" required className={inputCls} />
           <input name="fees" type="number" step="any" min="0" placeholder="Comisión" className={inputCls} />
           <input name="executedAt" type="date" required className={inputCls} />
           <button type="submit" className={btnCls}>Registrar</button>
