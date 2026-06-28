@@ -2,8 +2,7 @@
 
 App web de portafolio personal: gestión de posiciones, analítica, backtesting de estrategias, simulación de escenarios y alertas.
 
-> **Estado:** Fase 1 implementada (fundación + Portfolio Manager). Roadmap en [docs/superpowers/plans/ROADMAP.md](docs/superpowers/plans/ROADMAP.md).
-> Reubicado desde `OneDrive\Personal\00_Proyectos\03_Bet_Martingala` el 2026-06-11 (OneDrive no es apto para proyectos Node/Next.js).
+> **Estado:** MVP completo — las **6 fases** del roadmap implementadas, con tests, lint y build en verde. Roadmap, specs y planes de implementación en [docs/superpowers/](docs/superpowers/).
 
 ## Stack
 
@@ -11,6 +10,37 @@ App web de portafolio personal: gestión de posiciones, analítica, backtesting 
 - **Charts:** Recharts
 - **Backend:** Next.js API Routes
 - **Datos/Auth:** Supabase (PostgreSQL + Supabase Auth)
+- **Tests:** Vitest (dominio puro) · **Validación:** Zod
+
+## Cómo correr
+
+**Requisitos:** Node.js ≥ 18.18 y una cuenta gratuita en [Supabase](https://supabase.com).
+
+1. **Clonar e instalar:**
+   ```bash
+   git clone https://github.com/Ozzaru/Portfolio_App.git
+   cd Portfolio_App
+   npm install
+   ```
+
+2. **Crear el proyecto en Supabase** y aplicar el esquema:
+   - En el [dashboard de Supabase](https://supabase.com/dashboard), crea un proyecto (plan gratuito).
+   - En **SQL Editor**, ejecuta en orden el contenido de [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql) y [`0002_price_cache_adj_close.sql`](supabase/migrations/0002_price_cache_adj_close.sql).
+   - En **Authentication → Email**, desactiva *"Confirm email"* (app personal de un solo usuario).
+
+3. **Configurar el entorno:**
+   ```bash
+   cp .env.example .env.local
+   ```
+   Rellena `.env.local` con la URL y la *anon key* de tu proyecto (Supabase → **Settings → API**).
+
+4. **Arrancar el servidor de desarrollo:**
+   ```bash
+   npm run dev
+   ```
+   Abre [http://localhost:3000](http://localhost:3000). El script usa `--webpack` a propósito (Turbopack rompe el proxy de Next 16 en este proyecto).
+
+**Otros scripts:** `npm test` (Vitest) · `npm run lint` (ESLint) · `npm run build` (build de producción).
 
 ## Arquitectura — 6 módulos
 
@@ -47,6 +77,9 @@ Las demás estrategias del diseño original quedan **fuera del MVP** (son de *tr
 **Flujo:** Definir pesos/frecuencia/período → Ejecutar (históricos vía API, auto-backfill) → Ver Resultados.
 **Métricas:** Retorno Total · CAGR · Sharpe Ratio · Max Drawdown · vs S&P 500 (exceso geométrico) · Turnover.
 
-## Diseño
+## Diseño y documentación
 
-Mockups originales del brainstorming en [`docs/design/`](docs/design/): `architecture.html`, `backtest-design.html`, `ui-review.html`.
+Cada fase siguió un flujo **spec → plan de implementación → TDD**: los specs de diseño viven en
+[`docs/superpowers/specs/`](docs/superpowers/specs/) y los planes tarea-por-tarea en
+[`docs/superpowers/plans/`](docs/superpowers/plans/). Mockups del brainstorming inicial en
+[`docs/design/`](docs/design/) (`architecture.html`, `backtest-design.html`, `ui-review.html`).
