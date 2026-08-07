@@ -168,10 +168,15 @@ junto al umbral (`ENELCHILE > CLP$85`).
 
 ### Decisión 13 — `fees` sigue siendo el total; comisión e IVA son su desglose
 `transactions` gana `commission` e `iva`. `fees` se mantiene como **total autoritativo** que
-alimenta el cost basis, con el invariante `fees = commission + iva` garantizado por CHECK
-constraint. Las filas heredadas se backfillean como `commission = fees, iva = 0` (antes de esta
-fase no había IVA), de modo que el invariante se cumple universalmente y los motores que ya
-leen `fees` **no cambian**.
+alimenta el cost basis, y los motores que ya lo leen **no cambian**. Las filas heredadas se
+backfillean como `commission = fees, iva = 0` (antes de esta fase no había IVA).
+
+**`fees` es una columna generada por Postgres** (`generated always as (commission + iva)
+stored`), no una columna normal con CHECK. Un `check (fees = commission + iva)` resultó frágil
+en la práctica: el cliente enviaría la suma calculada en coma flotante de JavaScript
+(`1.13 + 0.21 = 1.3399999999999999`) y Postgres la compararía contra `numeric` exacto (`1.34`),
+rechazando el insert en una fracción grande de las comisiones con dos decimales. Generándola en
+la BD el desajuste es imposible por construcción y la ruta deja de enviarla.
 
 El IVA chileno es **19% sobre la comisión**. El formulario lo autocalcula y lo deja
 **editable**, porque Zesty redondea a peso entero: 19% × 29 = 5,51 → cobra **6**. Validado
@@ -382,8 +387,8 @@ valida que el IVA sea exactamente 19% de la comisión: los brokers redondean y d
 10. Falta de FX en **transacciones falla ruidosamente** (a diferencia de las series de precios).
 11. Escenarios con **FX fijo**; supuesto visible en la página.
 12. Alertas en **moneda nativa**, motor sin cambios.
-13. `fees` sigue siendo el total (`= commission + iva`, con CHECK); IVA 19% autocalculado y
-    editable por el redondeo de Zesty.
+13. `fees` sigue siendo el total, como **columna generada** por Postgres (un CHECK sería frágil
+    frente a la coma flotante de JS); IVA 19% autocalculado y editable por el redondeo de Zesty.
 14. Arreglo puntual: las **comisiones de venta** dejan de evaporarse en `holdings.ts`.
 15. El **retorno cambiario queda dentro de los retornos** (consecuencia aceptada): sube la
     correlación entre activos USD y cambian los valores de volatilidad y Sharpe.
