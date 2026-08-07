@@ -30,6 +30,25 @@ describe('valuePositions', () => {
   })
 })
 
+describe('presentación en moneda nativa', () => {
+  const holdings = [{ assetId: 'a', ticker: 'ENELCHILE.SN', quantity: 244, costBasis: 19477, avgCost: 79.82 }]
+
+  it('expone moneda y precio nativos junto al valor en base', () => {
+    const [p] = valuePositions(holdings, [{ ticker: 'ENELCHILE.SN', price: 80 }], new Map([
+      ['ENELCHILE.SN', { currency: 'CLP', price: 80 }],
+    ]))
+    expect(p.nativeCurrency).toBe('CLP')
+    expect(p.nativePrice).toBe(80)
+    expect(p.marketValue).toBe(19520)
+  })
+
+  it('sin mapa nativo, cae a la moneda base y al precio en base', () => {
+    const [p] = valuePositions(holdings, [{ ticker: 'ENELCHILE.SN', price: 80 }])
+    expect(p.nativeCurrency).toBe('CLP')
+    expect(p.nativePrice).toBe(80)
+  })
+})
+
 describe('portfolioTotals', () => {
   it('suma solo posiciones con precio para valor y P&L', () => {
     const quotes: Quote[] = [{ ticker: 'AAPL', price: 120 }]
