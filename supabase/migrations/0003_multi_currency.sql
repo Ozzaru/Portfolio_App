@@ -12,10 +12,16 @@ alter table transactions add column commission numeric not null default 0 check 
 alter table transactions add column iva        numeric not null default 0 check (iva >= 0);
 
 -- Histórico: antes de esta fase no había IVA, todo el `fees` era comisión.
--- Esto hace que el invariante se cumpla universalmente y permita el CHECK.
 update transactions set commission = fees, iva = 0;
 
-alter table transactions add constraint fees_breakdown check (fees = commission + iva);
+-- `fees` pasa a ser COLUMNA GENERADA por Postgres. Un CHECK `fees = commission + iva`
+-- sería frágil: el cliente enviaría la suma calculada en coma flotante de JS
+-- (1.13 + 0.21 = 1.3399999999999999) y Postgres la compararía contra `numeric`
+-- exacto (1.34), rechazando el insert. Generándola en la BD el desajuste es
+-- imposible por construcción, y el valor histórico se preserva porque ya se
+-- copió a `commission` arriba.
+alter table transactions drop column fees;
+alter table transactions add column fees numeric generated always as (commission + iva) stored;
 
 -- 2. Moneda del snapshot: nullable primero, el bloque de abajo la rellena.
 alter table snapshots add column currency text;

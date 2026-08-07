@@ -21,8 +21,8 @@ export const assetInputSchema = z.object({
 })
 export type AssetInput = z.infer<typeof assetInputSchema>
 
-// `fees` no se recibe del cliente: la ruta lo deriva como commission + iva,
-// que es el invariante que el CHECK `fees_breakdown` garantiza en la BD.
+// `fees` no se recibe del cliente: es una columna generada por Postgres
+// (commission + iva), así la suma no depende de la coma flotante de JS.
 // No se valida que el IVA sea exactamente 19% de la comisión: los brokers
 // redondean (Zesty cobra 6 sobre 5,51) y difieren entre sí.
 export const transactionInputSchema = z.object({

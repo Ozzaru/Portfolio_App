@@ -30,8 +30,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
   }
   const { assetId, side, quantity, price, commission, iva, executedAt } = parsed.data
-  // Invariante del esquema (CHECK `fees_breakdown`): fees es el total.
-  const fees = commission + iva
+  // `fees` no se envía: es una columna generada (commission + iva) que calcula
+  // Postgres, para que la suma no dependa de la coma flotante de JS.
 
   // RLS filtra assets ajenos: si no aparece, no es de este usuario
   const { data: asset } = await supabase.from('assets').select('id').eq('id', assetId).maybeSingle()
@@ -45,7 +45,6 @@ export async function POST(request: Request) {
       side,
       quantity,
       price,
-      fees,
       commission,
       iva,
       executed_at: executedAt,
