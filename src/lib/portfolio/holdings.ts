@@ -37,6 +37,13 @@ export function computeHoldings(transactions: Transaction[]): Holding[] {
     } else {
       const sellQty = Math.min(tx.quantity, h.quantity)
       h.costBasis -= sellQty * h.avgCost
+      // La comisión de venta es un costo real de la operación: se capitaliza en
+      // la posición restante, igual que las comisiones de compra. Antes se
+      // descartaba en silencio.
+      // Limitación conocida: en una venta TOTAL la posición se filtra al final
+      // (quantity = 0) y el fee no queda registrado en ningún lado — este modelo
+      // solo sigue posiciones abiertas, no P&L realizado.
+      h.costBasis += tx.fees
       h.quantity -= sellQty
     }
     h.avgCost = h.quantity > EPSILON ? h.costBasis / h.quantity : 0

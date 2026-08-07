@@ -70,3 +70,17 @@ describe('computeHoldings', () => {
     expect(h.costBasis).toBe(600)
   })
 })
+
+describe('comisiones de venta (Decisión 14)', () => {
+  it('capitaliza los fees de venta en el costo de la posición restante', () => {
+    const [h] = computeHoldings([
+      { assetId: 'a', ticker: 'AAPL', side: 'buy', quantity: 10, price: 100, fees: 5, executedAt: '2026-01-05' },
+      { assetId: 'a', ticker: 'AAPL', side: 'sell', quantity: 5, price: 120, fees: 3, executedAt: '2026-01-06' },
+    ])
+    // Compra: costBasis = 10*100 + 5 = 1005, avgCost = 100.5
+    // Venta:  1005 − 5*100.5 + 3 = 505.5 sobre 5 acciones → avgCost 101.1
+    expect(h.quantity).toBe(5)
+    expect(h.costBasis).toBeCloseTo(505.5, 10)
+    expect(h.avgCost).toBeCloseTo(101.1, 10)
+  })
+})
