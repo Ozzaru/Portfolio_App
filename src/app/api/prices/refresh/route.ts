@@ -7,6 +7,7 @@ import { refreshQuotes, type AssetRef } from '@/lib/market-data/refresh'
 import { computeHoldings, type Transaction } from '@/lib/portfolio/holdings'
 import { computeSnapshotValue } from '@/lib/portfolio/snapshot'
 import { evaluateAndPersist } from '@/lib/alerts/run'
+import { FX_TICKER } from '@/lib/fx/constants'
 
 export async function POST() {
   const supabase = await createClient()
@@ -22,7 +23,12 @@ export async function POST() {
     yahoo: createYahooAdapter(defaultFetcher),
     coingecko: createCoinGeckoAdapter(defaultFetcher),
   }
-  const { quotes, results } = await refreshQuotes((assets ?? []) as AssetRef[], adapters)
+  // Igual que en el backfill: el FX entra como AssetRef sintético hacia Yahoo.
+  const refs: AssetRef[] = [
+    ...((assets ?? []) as AssetRef[]),
+    { ticker: FX_TICKER, asset_type: 'stock' },
+  ]
+  const { quotes, results } = await refreshQuotes(refs, adapters)
 
   // Upsert de cada cotización de hoy en price_cache (idempotente por la unique).
   if (quotes.length > 0) {
