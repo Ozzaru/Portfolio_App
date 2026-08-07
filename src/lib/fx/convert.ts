@@ -79,8 +79,15 @@ export function transactionsToBaseCurrency(
     }
     const rate = fxAsOf(fxSeries, tx.executedAt)
     if (rate === null) {
+      // El histórico de Yahoo llega hasta 5 años atrás (su adaptador pide
+      // `range=5y` fijo), así que para una transacción más antigua el backfill
+      // no puede resolver nada: el mensaje debe decir el rango real en vez de
+      // sugerir un remedio imposible.
+      const earliest = fxSeries.length > 0 ? fxSeries[0].date : null
       throw new Error(
-        `falta tipo de cambio ${FX_TICKER} para ${tx.executedAt}; ejecuta el backfill de precios`
+        earliest
+          ? `falta tipo de cambio ${FX_TICKER} para ${tx.executedAt}: el histórico disponible empieza en ${earliest}`
+          : `falta el histórico de ${FX_TICKER}; corre el backfill en Fuentes de datos`
       )
     }
     return { ...tx, price: tx.price * rate, fees: tx.fees * rate }

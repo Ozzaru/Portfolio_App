@@ -137,4 +137,20 @@ describe('transactionsToBaseCurrency', () => {
       transactionsToBaseCurrency([buy('AAPL', '2026-01-02')], currencies, FX_SERIES)
     ).toThrow(/USDCLP=X para 2026-01-02/)
   })
+
+  it('el mensaje de FX faltante indica el rango real disponible, no un remedio imposible', () => {
+    // El adaptador de Yahoo pide range=5y fijo, así que para una transacción
+    // anterior al inicio de la serie FX el backfill nunca puede resolverlo:
+    // el mensaje debe decir desde cuándo hay histórico, no sugerir "ejecuta
+    // el backfill" como si fuera a arreglarse.
+    expect(() =>
+      transactionsToBaseCurrency([buy('AAPL', '2026-01-02')], currencies, FX_SERIES)
+    ).toThrow(/el histórico disponible empieza en 2026-01-05/)
+  })
+
+  it('LANZA con mensaje distinto si la serie FX está vacía (sin histórico en absoluto)', () => {
+    expect(() =>
+      transactionsToBaseCurrency([buy('AAPL', '2026-01-02')], currencies, [])
+    ).toThrow(/falta el histórico de USDCLP=X; corre el backfill/)
+  })
 })
