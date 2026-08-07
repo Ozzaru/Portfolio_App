@@ -3,7 +3,10 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { fetchAllRows } from '@/lib/supabase/paginate'
 import { computeHoldings, type Transaction } from '@/lib/portfolio/holdings'
-import { valuePositions, portfolioTotals } from '@/lib/portfolio/valuation'
+import { valuePositions, portfolioTotals, type NativeQuote } from '@/lib/portfolio/valuation'
+import { loadFxSeries } from '@/lib/fx/load'
+import { fxAsOf, transactionsToBaseCurrency } from '@/lib/fx/convert'
+import { BASE_CURRENCY } from '@/lib/fx/constants'
 
 export async function GET() {
   const supabase = await createClient()
@@ -14,7 +17,7 @@ export async function GET() {
 
   const txPromise = supabase
     .from('transactions')
-    .select('asset_id, side, quantity, price, fees, executed_at, assets(ticker)')
+    .select('asset_id, side, quantity, price, fees, executed_at, assets(ticker, currency)')
 
   // Paginado: sin .range() Supabase tope el resultado al "Max rows" (1000) y,
   // con suficientes tickers/fechas, el penúltimo precio de un ticker (o incluso
@@ -27,8 +30,9 @@ export async function GET() {
   type PriceCacheRow = { ticker: string; price: number; price_date: string }
   let txRes: Awaited<typeof txPromise>
   let priceRows: PriceCacheRow[]
+  let fxSeries: Awaited<ReturnType<typeof loadFxSeries>>
   try {
-    ;[txRes, priceRows] = await Promise.all([
+    ;[txRes, priceRows, fxSeries] = await Promise.all([
       txPromise,
       fetchAllRows<PriceCacheRow>((from, to) =>
         supabase
@@ -39,6 +43,7 @@ export async function GET() {
           .order('source', { ascending: true })
           .range(from, to),
       ),
+      loadFxSeries(supabase),
     ])
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'price_cache error' }, { status: 500 })
@@ -55,6 +60,10 @@ export async function GET() {
     fees: Number(row.fees),
     executedAt: row.executed_at,
   }))
+  const currencyByTicker = new Map<string, string>()
+  for (const row of (txRes.data ?? []) as any[]) {
+    if (row.assets?.ticker) currencyByTicker.set(row.assets.ticker, row.assets.currency ?? 'USD')
+  }
   /* eslint-enable @typescript-eslint/no-explicit-any */
 
   // priceRows viene ordenado por fecha desc: primera aparición = último precio,
@@ -66,16 +75,47 @@ export async function GET() {
     else if (!previous.has(p.ticker)) previous.set(p.ticker, Number(p.price))
   }
 
-  const holdings = computeHoldings(transactions)
-  const quotes = [...latest].map(([ticker, price]) => ({ ticker, price }))
-  const positions = valuePositions(holdings, quotes)
+  // Frontera: precios y transacciones pasan a CLP antes de tocar el dominio.
+  // El valor de mercado usa el FX de hoy; el costo, el FX de cada compra
+  // (Decisión 4) — de eso se encarga transactionsToBaseCurrency.
+  const today = new Date().toISOString().slice(0, 10)
+  const fxToday = fxAsOf(fxSeries, today)
+  const toBase = (ticker: string, nativePrice: number): number | null => {
+    if ((currencyByTicker.get(ticker) ?? 'USD') === BASE_CURRENCY) return nativePrice
+    return fxToday !== null ? nativePrice * fxToday : null
+  }
+
+  let baseTransactions: Transaction[]
+  try {
+    baseTransactions = transactionsToBaseCurrency(transactions, currencyByTicker, fxSeries)
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'error de conversión' }, { status: 500 })
+  }
+
+  const holdings = computeHoldings(baseTransactions)
+
+  const quotes: { ticker: string; price: number }[] = []
+  const native = new Map<string, NativeQuote>()
+  for (const [ticker, nativePrice] of latest) {
+    native.set(ticker, { currency: currencyByTicker.get(ticker) ?? 'USD', price: nativePrice })
+    const basePrice = toBase(ticker, nativePrice)
+    if (basePrice !== null) quotes.push({ ticker, price: basePrice })
+  }
+
+  const positions = valuePositions(holdings, quotes, native)
   const totals = portfolioTotals(positions)
 
+  // P&L del día en base: ambos extremos convertidos con el MISMO FX, así que
+  // mide movimiento de precio, no ruido cambiario intradía.
   const dailyPnl = positions.reduce((sum, pos) => {
     const last = latest.get(pos.ticker)
     const prev = previous.get(pos.ticker)
-    return last !== undefined && prev !== undefined ? sum + pos.quantity * (last - prev) : sum
+    if (last === undefined || prev === undefined) return sum
+    const lastBase = toBase(pos.ticker, last)
+    const prevBase = toBase(pos.ticker, prev)
+    if (lastBase === null || prevBase === null) return sum
+    return sum + pos.quantity * (lastBase - prevBase)
   }, 0)
 
-  return NextResponse.json({ positions, totals: { ...totals, dailyPnl } })
+  return NextResponse.json({ positions, totals: { ...totals, dailyPnl }, baseCurrency: BASE_CURRENCY })
 }
