@@ -2,7 +2,7 @@
 
 App web de portafolio personal: gestión de posiciones, analítica, backtesting de estrategias, simulación de escenarios y alertas.
 
-> **Estado:** MVP completo — las **6 fases** del roadmap implementadas, con tests, lint y build en verde. Roadmap, specs y planes de implementación en [docs/superpowers/](docs/superpowers/).
+> **Estado:** MVP completo (6 fases) + **Fase 7 multi-moneda (base CLP)**. Tests, lint y build en verde. Roadmap, specs y planes de implementación en [docs/superpowers/](docs/superpowers/).
 
 ## Stack
 
@@ -25,7 +25,7 @@ App web de portafolio personal: gestión de posiciones, analítica, backtesting 
 
 2. **Crear el proyecto en Supabase** y aplicar el esquema:
    - En el [dashboard de Supabase](https://supabase.com/dashboard), crea un proyecto (plan gratuito).
-   - En **SQL Editor**, ejecuta en orden el contenido de [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql) y [`0002_price_cache_adj_close.sql`](supabase/migrations/0002_price_cache_adj_close.sql).
+   - En **SQL Editor**, ejecuta en orden el contenido de [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql), [`0002_price_cache_adj_close.sql`](supabase/migrations/0002_price_cache_adj_close.sql) y [`0003_multi_currency.sql`](supabase/migrations/0003_multi_currency.sql). La migración 0003 exige que `USDCLP=X` ya esté en `price_cache`: corre el **Backfill** en `/data-sources` antes (aborta sola si falta).
    - En **Authentication → Email**, desactiva *"Confirm email"* (app personal de un solo usuario).
 
 3. **Configurar el entorno:**
@@ -46,7 +46,7 @@ App web de portafolio personal: gestión de posiciones, analítica, backtesting 
 
 | Módulo | Responsabilidad |
 |--------|-----------------|
-| Portfolio Manager | CRUD posiciones · transacciones · snapshots |
+| Portfolio Manager | CRUD posiciones · transacciones (comisión + IVA) · snapshots · **multi-moneda base CLP** |
 | Market Data Service | Yahoo Finance · CoinGecko · Alpha Vantage · entrada manual |
 | Analytics Engine | P&L · retornos · alocación · benchmarks |
 | Backtesting Engine | estrategias · históricos · métricas (Sharpe, Drawdown) |
@@ -58,6 +58,22 @@ App web de portafolio personal: gestión de posiciones, analítica, backtesting 
 `assets` (ticker, tipo, moneda) · `transactions` (compra/venta, precio, fecha) · `snapshots` (valor diario) · `strategies` (reglas, parámetros) · `alerts` (condición, umbral, estado)
 
 Los datos de mercado se cachean en Supabase para evitar llamadas repetidas a las APIs.
+
+## Multi-moneda (base CLP)
+
+La cartera se consolida en **pesos chilenos**. Cada posición muestra su precio en su moneda nativa
+(`ENELCHILE.SN` en CLP, `AAPL` en USD), pero el valor total, la distribución y toda la analítica
+operan en CLP.
+
+- **Valor de mercado** al tipo de cambio de hoy; **cost basis al tipo de cambio de la fecha de cada
+  compra**, de modo que el P&L incluye el retorno cambiario real.
+- El tipo de cambio `USDCLP=X` se cachea en `price_cache` como un ticker más (CLP por 1 USD).
+- La conversión ocurre en la **frontera de datos**: los motores de analítica, backtest y escenarios
+  reciben una sola moneda y son agnósticos a ella.
+- **Calendarios:** el NAV y el Sharpe del portafolio usan la unión de días hábiles con forward-fill;
+  la correlación usa intersección estricta, para que un feriado chileno no inyecte retornos 0.
+
+Ver [spec de Fase 7](docs/superpowers/specs/2026-08-06-fase-7-multi-moneda-clp-design.md).
 
 ## Páginas
 
