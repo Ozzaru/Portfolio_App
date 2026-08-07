@@ -38,13 +38,18 @@ export function computeHoldings(transactions: Transaction[]): Holding[] {
       const sellQty = Math.min(tx.quantity, h.quantity)
       h.costBasis -= sellQty * h.avgCost
       // La comisión de venta es un costo real de la operación: se capitaliza en
-      // la posición restante, igual que las comisiones de compra. Antes se
-      // descartaba en silencio.
-      // Limitación conocida: en una venta TOTAL la posición se filtra al final
-      // (quantity = 0) y el fee no queda registrado en ningún lado — este modelo
-      // solo sigue posiciones abiertas, no P&L realizado.
+      // la posición restante, igual que las comisiones de compra.
       h.costBasis += tx.fees
       h.quantity -= sellQty
+      // Cierre total: la posición se reinicia a cero. Sin esto, el costo
+      // remanente (la comisión de esta venta) quedaría en el Map y lo heredaría
+      // una recompra posterior del mismo activo, inflando su costo base.
+      // Limitación conocida: ese fee de cierre no se registra en ningún lado —
+      // este modelo sigue posiciones abiertas, no P&L realizado.
+      if (h.quantity <= EPSILON) {
+        h.quantity = 0
+        h.costBasis = 0
+      }
     }
     h.avgCost = h.quantity > EPSILON ? h.costBasis / h.quantity : 0
     byAsset.set(tx.assetId, h)

@@ -83,4 +83,23 @@ describe('comisiones de venta (Decisión 14)', () => {
     expect(h.costBasis).toBeCloseTo(505.5, 10)
     expect(h.avgCost).toBeCloseTo(101.1, 10)
   })
+
+  it('el cierre total resetea el costo: una recompra posterior no hereda el fee de la venta que cerró la posición', () => {
+    const [h] = computeHoldings([
+      // Compra: costBasis = 10*100 + 5 = 1005, avgCost = 100.5
+      { assetId: 'a', ticker: 'AAPL', side: 'buy', quantity: 10, price: 100, fees: 5, executedAt: '2026-01-05' },
+      // Venta TOTAL (cierra la posición): costBasis 1005 − 10*100.5 = 0, luego
+      // += fee 3 → 3 residual con quantity 0. Sin el fix, ese costBasis=3
+      // sobrevive en el Map interno (el holding solo se filtra de la SALIDA,
+      // no se borra del Map) y lo hereda la recompra de abajo.
+      { assetId: 'a', ticker: 'AAPL', side: 'sell', quantity: 10, price: 120, fees: 3, executedAt: '2026-01-06' },
+      // Recompra tras el cierre: si costBasis arrancara en 3 (heredado), daría
+      // 403 / 100.75 en vez de 400 / 100. El costo base no puede depender de
+      // una venta ya liquidada por completo.
+      { assetId: 'a', ticker: 'AAPL', side: 'buy', quantity: 4, price: 100, fees: 0, executedAt: '2026-01-10' },
+    ])
+    expect(h.quantity).toBe(4)
+    expect(h.costBasis).toBe(400)
+    expect(h.avgCost).toBe(100)
+  })
 })
