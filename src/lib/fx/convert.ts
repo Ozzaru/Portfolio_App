@@ -1,7 +1,8 @@
 // src/lib/fx/convert.ts
 import { priceAsOf } from '@/lib/analytics/series'
 import type { PricePointAdj, PriceSeriesByTicker } from '@/lib/analytics/types'
-import { BASE_CURRENCY } from './constants'
+import type { Transaction } from '@/lib/portfolio/holdings'
+import { BASE_CURRENCY, FX_TICKER } from './constants'
 
 // Tipo de cambio vigente en `date` con forward-fill: un feriado en Chile con
 // mercado abierto en EE.UU. usa el último FX publicado (Decisión 7).
@@ -54,4 +55,34 @@ export function toBaseCurrency(
     out.set(ticker, convertSeries(points, currencyByTicker.get(ticker) ?? 'USD', fxSeries))
   }
   return out
+}
+
+// Convierte transacciones a la moneda base usando el FX de SU fecha de
+// ejecución, no el de hoy (Decisión 4). Comprar AAPL a US$100 con el dólar a
+// 800 costó CLP$80.000; valorar ese costo al dólar de hoy borraría la ganancia
+// cambiaria, que para un inversor en pesos es ganancia real.
+//
+// A diferencia de las series de precios, la falta de FX aquí LANZA en vez de
+// descartar (Decisión 10): perder un punto de precio solo encoge la muestra,
+// pero perder una compra alteraría los holdings y mostraría una cartera
+// silenciosamente incorrecta.
+export function transactionsToBaseCurrency(
+  transactions: Transaction[],
+  currencyByTicker: Map<string, string>,
+  fxSeries: PricePointAdj[]
+): Transaction[] {
+  return transactions.map((tx) => {
+    const currency = currencyByTicker.get(tx.ticker) ?? 'USD'
+    if (currency === BASE_CURRENCY) return tx
+    if (currency !== 'USD') {
+      throw new Error(`moneda no soportada: ${currency} (solo USD y ${BASE_CURRENCY})`)
+    }
+    const rate = fxAsOf(fxSeries, tx.executedAt)
+    if (rate === null) {
+      throw new Error(
+        `falta tipo de cambio ${FX_TICKER} para ${tx.executedAt}; ejecuta el backfill de precios`
+      )
+    }
+    return { ...tx, price: tx.price * rate, fees: tx.fees * rate }
+  })
 }

@@ -1,7 +1,8 @@
 // src/lib/fx/convert.test.ts
 import { describe, it, expect } from 'vitest'
 import type { PricePointAdj, PriceSeriesByTicker } from '@/lib/analytics/types'
-import { fxAsOf, convertSeries, toBaseCurrency } from './convert'
+import type { Transaction } from '@/lib/portfolio/holdings'
+import { fxAsOf, convertSeries, toBaseCurrency, transactionsToBaseCurrency } from './convert'
 
 const fx = (date: string, price: number): PricePointAdj => ({ date, price, adjPrice: price })
 
@@ -92,5 +93,48 @@ describe('toBaseCurrency', () => {
     ])
     const out = toBaseCurrency(series, new Map(), FX_SERIES)
     expect(out.get('SPY')![0].price).toBe(90_000)
+  })
+})
+
+describe('transactionsToBaseCurrency', () => {
+  const buy = (ticker: string, executedAt: string): Transaction => ({
+    assetId: 'a1',
+    ticker,
+    side: 'buy',
+    quantity: 10,
+    price: 100,
+    fees: 5,
+    executedAt,
+  })
+  const currencies = new Map([
+    ['AAPL', 'USD'],
+    ['ENELCHILE.SN', 'CLP'],
+  ])
+
+  it('usa el FX de executedAt, NO el de hoy', () => {
+    const [tx] = transactionsToBaseCurrency([buy('AAPL', '2026-01-05')], currencies, FX_SERIES)
+    expect(tx.price).toBe(90_000)
+    expect(tx.fees).toBe(4_500)
+  })
+
+  it('convierte cada transacción con el FX de SU propia fecha', () => {
+    const out = transactionsToBaseCurrency(
+      [buy('AAPL', '2026-01-05'), buy('AAPL', '2026-01-09')],
+      currencies,
+      FX_SERIES
+    )
+    expect(out[0].price).toBe(90_000)
+    expect(out[1].price).toBe(95_000)
+  })
+
+  it('deja las transacciones en CLP intactas', () => {
+    const tx = buy('ENELCHILE.SN', '2026-01-05')
+    expect(transactionsToBaseCurrency([tx], currencies, FX_SERIES)[0]).toEqual(tx)
+  })
+
+  it('LANZA si falta FX: descartar una compra falsearía la cartera', () => {
+    expect(() =>
+      transactionsToBaseCurrency([buy('AAPL', '2026-01-02')], currencies, FX_SERIES)
+    ).toThrow(/USDCLP=X para 2026-01-02/)
   })
 })
