@@ -9,7 +9,7 @@ import type { AssetType, ScenarioHolding } from '@/lib/scenarios/types'
 import type { PriceSeriesByTicker, PricePointAdj } from '@/lib/analytics/types'
 import { loadFxSeries } from '@/lib/fx/load'
 import { toBaseCurrency, convertSeries, fxAsOf } from '@/lib/fx/convert'
-import { BASE_CURRENCY } from '@/lib/fx/constants'
+import { BASE_CURRENCY, FX_TICKER } from '@/lib/fx/constants'
 
 const BENCHMARK_TICKER = 'SPY'
 
@@ -92,7 +92,21 @@ export async function POST(request: Request) {
   for (const t of portfolioTickers) priceSeries.set(t, byTicker.get(t) ?? [])
   const benchmarkSeries = byTicker.get(BENCHMARK_TICKER) ?? null
 
-  const fxSeries = await loadFxSeries(supabase, lookbackFrom)
+  // Serie FX completa, sin recortar por fecha: el forward-fill necesita el
+  // último punto ANTERIOR al inicio de la ventana, que un filtro `gte` eliminaría.
+  const fxSeries = await loadFxSeries(supabase)
+
+  // Somos el único consumidor del FX que no garantizaba que la serie
+  // existiera (analytics la descarga si falta, backtest la incluye en
+  // ensureHistory). Sin esta guarda, un USDCLP=X faltante deja fxToday en
+  // null y todos los holdings en USD quedan con currentPrice: null,
+  // excluidos del stress test sin aviso.
+  if (fxSeries.length === 0 && holdings.some((h) => (currencyByTicker.get(h.ticker) ?? 'USD') !== BASE_CURRENCY)) {
+    return NextResponse.json(
+      { error: `falta el histórico de ${FX_TICKER}; corre el backfill en Fuentes de datos` },
+      { status: 400 }
+    )
+  }
 
   // El resultado se expresa en CLP, así que el precio actual también.
   // El shock se aplica sobre retornos ya en CLP con el FX FIJO: en la realidad

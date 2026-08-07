@@ -114,7 +114,9 @@ export async function POST(request: Request) {
   const cryptoTickers = portfolioTickers.filter((t) => assetTypeByTicker.get(t) === 'crypto')
 
   // Frontera: series en CLP; el motor de backtest no cambia.
-  const fxSeries = await loadFxSeries(supabase, config.from)
+  // Serie FX completa, sin recortar por fecha: el forward-fill necesita el
+  // último punto ANTERIOR al inicio de la ventana, que un filtro `gte` eliminaría.
+  const fxSeries = await loadFxSeries(supabase)
 
   // 5. Ejecutar el motor puro.
   try {
