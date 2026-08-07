@@ -8,6 +8,7 @@ import { formatMoney } from '@/lib/format/money'
 interface Asset {
   id: string
   ticker: string
+  currency: string
 }
 interface Position {
   ticker: string
@@ -75,6 +76,17 @@ export default function AlertsPage() {
   useEffect(() => {
     loadAll()
   }, [loadAll])
+
+  // La moneda de un ticker sale de /api/assets (fuente de verdad: existe para
+  // todo activo, vendido o no, tenga o no precio cacheado). `pricesByTicker`
+  // viene de /api/positions, que solo cubre posiciones ABIERTAS con precio en
+  // caché — usarlo como fuente principal reintroduciría el mismo error de
+  // etiquetado (mostrar en USD un umbral que es en pesos) que esto arregla.
+  // 'USD' es el último recurso, igual que el default del esquema.
+  const currencyFor = useCallback(
+    (ticker: string) => assets.find((a) => a.ticker === ticker)?.currency ?? pricesByTicker[ticker]?.currency ?? 'USD',
+    [assets, pricesByTicker]
+  )
 
   async function create() {
     setError(null)
@@ -203,7 +215,7 @@ export default function AlertsPage() {
                   <td className="px-4 text-right">
                     {a.alertType === 'pct_change'
                       ? `${a.threshold}%`
-                      : money(a.threshold, pricesByTicker[a.ticker]?.currency ?? 'USD')}
+                      : money(a.threshold, currencyFor(a.ticker))}
                   </td>
                   <td className="px-4 text-right">
                     {pricesByTicker[a.ticker]
