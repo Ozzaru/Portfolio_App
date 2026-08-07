@@ -12,7 +12,7 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from('transactions')
-    .select('id, asset_id, side, quantity, price, fees, executed_at, assets(ticker)')
+    .select('id, asset_id, side, quantity, price, fees, commission, iva, executed_at, assets(ticker, currency)')
     .order('executed_at', { ascending: false })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
@@ -29,7 +29,9 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
   }
-  const { assetId, side, quantity, price, fees, executedAt } = parsed.data
+  const { assetId, side, quantity, price, commission, iva, executedAt } = parsed.data
+  // Invariante del esquema (CHECK `fees_breakdown`): fees es el total.
+  const fees = commission + iva
 
   // RLS filtra assets ajenos: si no aparece, no es de este usuario
   const { data: asset } = await supabase.from('assets').select('id').eq('id', assetId).maybeSingle()
@@ -44,6 +46,8 @@ export async function POST(request: Request) {
       quantity,
       price,
       fees,
+      commission,
+      iva,
       executed_at: executedAt,
     })
     .select()
