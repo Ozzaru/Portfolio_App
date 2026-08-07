@@ -1,7 +1,8 @@
 // src/app/(app)/portfolio/page.tsx
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { IVA_RATE } from '@/lib/fx/constants'
 
 interface Asset {
   id: string
@@ -18,8 +19,10 @@ interface Tx {
   quantity: number
   price: number
   fees: number
+  commission: number
+  iva: number
   executed_at: string
-  assets: { ticker: string } | null
+  assets: { ticker: string; currency: string } | null
 }
 
 const inputCls =
@@ -31,6 +34,10 @@ export default function PortfolioPage() {
   const [assets, setAssets] = useState<Asset[]>([])
   const [txs, setTxs] = useState<Tx[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [txAssetId, setTxAssetId] = useState('')
+  const [commission, setCommission] = useState('')
+  const [iva, setIva] = useState('')
+  const currencyRef = useRef<HTMLInputElement | null>(null)
 
   const load = useCallback(async () => {
     const [aRes, tRes] = await Promise.all([fetch('/api/assets'), fetch('/api/transactions')])
@@ -89,7 +96,20 @@ export default function PortfolioPage() {
             if (ok) form.reset()
           }}
         >
-          <input name="ticker" placeholder="Ticker (AAPL)" required className={inputCls} />
+          <input
+            name="ticker"
+            placeholder="Ticker (AAPL o ENELCHILE.SN)"
+            required
+            className={inputCls}
+            onChange={(e) => {
+              // La Bolsa de Santiago usa el sufijo .SN en Yahoo y cotiza en pesos.
+              // Sugerencia, no imposición: el campo sigue siendo editable.
+              const el = currencyRef.current
+              if (el && !el.value && e.target.value.trim().toUpperCase().endsWith('.SN')) {
+                el.value = 'CLP'
+              }
+            }}
+          />
           <input name="name" placeholder="Nombre (opcional)" className={inputCls} />
           <select name="assetType" required className={inputCls} defaultValue="stock">
             <option value="stock">Acción</option>
@@ -98,7 +118,13 @@ export default function PortfolioPage() {
             <option value="cash">Efectivo</option>
             <option value="other">Otro</option>
           </select>
-          <input name="currency" placeholder="Moneda (USD)" maxLength={3} className={inputCls} />
+          <input
+            name="currency"
+            placeholder="Moneda (USD)"
+            maxLength={3}
+            className={inputCls}
+            ref={currencyRef}
+          />
           <button type="submit" className={btnCls}>Añadir activo</button>
         </form>
         <ul className="flex flex-wrap gap-2">
@@ -124,7 +150,9 @@ export default function PortfolioPage() {
       <section>
         <h2 className="mb-1 text-lg font-semibold text-slate-200">Transacciones</h2>
         <p className="mb-3 text-xs text-slate-500">
-          Registra una compra o venta: cantidad, <span className="text-slate-400">precio por unidad</span> y fecha.
+          Registra una compra o venta: cantidad, <span className="text-slate-400">precio por unidad</span> y fecha,
+          en la <span className="text-slate-400">moneda del activo</span>. El IVA se calcula solo (19% de la
+          comisión) y puedes ajustarlo si el broker redondeó distinto.
         </p>
         <form
           className="mb-4 flex flex-wrap gap-2"
@@ -137,13 +165,25 @@ export default function PortfolioPage() {
               side: fd.get('side'),
               quantity: fd.get('quantity'),
               price: fd.get('price'),
-              fees: fd.get('fees') || 0,
+              commission: commission || 0,
+              iva: iva || 0,
               executedAt: fd.get('executedAt'),
             })
-            if (ok) form.reset()
+            if (ok) {
+              form.reset()
+              setCommission('')
+              setIva('')
+              setTxAssetId('')
+            }
           }}
         >
-          <select name="assetId" required className={inputCls}>
+          <select
+            name="assetId"
+            required
+            className={inputCls}
+            value={txAssetId}
+            onChange={(e) => setTxAssetId(e.target.value)}
+          >
             <option value="">Activo…</option>
             {assets.map((a) => (
               <option key={a.id} value={a.id}>{a.ticker}</option>
@@ -155,7 +195,41 @@ export default function PortfolioPage() {
           </select>
           <input name="quantity" type="number" step="any" min="0" placeholder="Cantidad" required className={inputCls} />
           <input name="price" type="number" step="any" min="0" placeholder="Precio (ej. 293.08)" required className={inputCls} />
-          <input name="fees" type="number" step="any" min="0" placeholder="Comisión" className={inputCls} />
+          <input
+            name="commission"
+            type="number"
+            step="any"
+            min="0"
+            placeholder="Comisión"
+            className={inputCls}
+            value={commission}
+            onChange={(e) => {
+              const v = e.target.value
+              setCommission(v)
+              // Autocálculo del IVA (19% sobre la comisión), redondeado según la
+              // moneda: Zesty cobra en pesos enteros (19% de 29 = 5,51 → 6).
+              const n = Number(v)
+              if (v.trim() === '' || !Number.isFinite(n)) {
+                setIva('')
+                return
+              }
+              const isClp =
+                assets.find((a) => a.id === txAssetId)?.currency?.toUpperCase() === 'CLP'
+              const raw = n * IVA_RATE
+              setIva(String(isClp ? Math.round(raw) : Math.round(raw * 100) / 100))
+            }}
+          />
+          <input
+            name="iva"
+            type="number"
+            step="any"
+            min="0"
+            placeholder="IVA"
+            title="Autocalculado como 19% de la comisión; editable porque el broker redondea"
+            className={inputCls}
+            value={iva}
+            onChange={(e) => setIva(e.target.value)}
+          />
           <input name="executedAt" type="date" required className={inputCls} />
           <button type="submit" className={btnCls}>Registrar</button>
         </form>
@@ -168,6 +242,7 @@ export default function PortfolioPage() {
               <th className="text-right">Cantidad</th>
               <th className="text-right">Precio</th>
               <th className="text-right">Comisión</th>
+              <th className="text-right">IVA</th>
               <th></th>
             </tr>
           </thead>
@@ -180,8 +255,12 @@ export default function PortfolioPage() {
                   {t.side === 'buy' ? 'Compra' : 'Venta'}
                 </td>
                 <td className="text-right">{Number(t.quantity)}</td>
-                <td className="text-right">{Number(t.price).toLocaleString()}</td>
-                <td className="text-right">{Number(t.fees)}</td>
+                <td className="text-right">
+                  {Number(t.price).toLocaleString('es-CL')}{' '}
+                  <span className="text-xs text-slate-500">{t.assets?.currency ?? ''}</span>
+                </td>
+                <td className="text-right">{Number(t.commission ?? 0).toLocaleString('es-CL')}</td>
+                <td className="text-right">{Number(t.iva ?? 0).toLocaleString('es-CL')}</td>
                 <td className="text-right">
                   <button
                     onClick={() => remove(`/api/transactions/${t.id}`)}
@@ -194,7 +273,7 @@ export default function PortfolioPage() {
             ))}
             {txs.length === 0 && (
               <tr>
-                <td colSpan={7} className="py-4 text-slate-500">Sin transacciones todavía.</td>
+                <td colSpan={8} className="py-4 text-slate-500">Sin transacciones todavía.</td>
               </tr>
             )}
           </tbody>
