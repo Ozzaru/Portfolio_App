@@ -38,6 +38,10 @@ export default function PortfolioPage() {
   const [commission, setCommission] = useState('')
   const [iva, setIva] = useState('')
   const currencyRef = useRef<HTMLInputElement | null>(null)
+  // true mientras el contenido de `currencyRef` fue puesto por el
+  // autocompletado del ticker (no por el usuario). Necesario para poder
+  // deshacer la sugerencia: ver el onChange de "ticker" más abajo.
+  const autofilledRef = useRef(false)
 
   const load = useCallback(async () => {
     const [aRes, tRes] = await Promise.all([fetch('/api/assets'), fetch('/api/transactions')])
@@ -103,10 +107,18 @@ export default function PortfolioPage() {
             className={inputCls}
             onChange={(e) => {
               // La Bolsa de Santiago usa el sufijo .SN en Yahoo y cotiza en pesos.
-              // Sugerencia, no imposición: el campo sigue siendo editable.
+              // Sugerencia, no imposición: el campo sigue siendo editable. Pero la
+              // sugerencia debe poder DESHACERSE: si el usuario escribe
+              // ENELCHILE.SN (autocompleta CLP) y luego corrige el ticker a AAPL
+              // sin tocar la moneda a mano, dejar CLP puesto produce una
+              // subvaluación de ~950x completamente silenciosa. Por eso solo
+              // tocamos el campo si está vacío o si su contenido actual lo puso
+              // este mismo autocompletado — nunca si el usuario lo editó a mano.
               const el = currencyRef.current
-              if (el && !el.value && e.target.value.trim().toUpperCase().endsWith('.SN')) {
-                el.value = 'CLP'
+              if (el && (el.value === '' || autofilledRef.current)) {
+                const isCl = e.target.value.trim().toUpperCase().endsWith('.SN')
+                el.value = isCl ? 'CLP' : ''
+                autofilledRef.current = isCl
               }
             }}
           />
@@ -124,6 +136,11 @@ export default function PortfolioPage() {
             maxLength={3}
             className={inputCls}
             ref={currencyRef}
+            onChange={() => {
+              // El usuario está editando la moneda a mano: el autocompletado
+              // deja de tener autoridad sobre este campo.
+              autofilledRef.current = false
+            }}
           />
           <button type="submit" className={btnCls}>Añadir activo</button>
         </form>
