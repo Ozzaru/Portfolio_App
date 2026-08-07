@@ -13,6 +13,8 @@ import {
   YAxis,
 } from 'recharts'
 import type { StressResult } from '@/lib/scenarios/types'
+import { formatMoney } from '@/lib/format/money'
+import { BASE_CURRENCY } from '@/lib/fx/constants'
 
 interface Position {
   ticker: string
@@ -24,8 +26,7 @@ const btnCls =
 const ghostBtn = 'rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800'
 
 const pct = (x: number | null) => (x == null ? '—' : `${(x * 100).toFixed(2)}%`)
-const money = (x: number | null) =>
-  x == null ? '—' : x.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+const money = (x: number | null) => formatMoney(x, BASE_CURRENCY)
 
 export default function ScenariosPage() {
   const [tickers, setTickers] = useState<string[]>([])
@@ -78,6 +79,13 @@ export default function ScenariosPage() {
   return (
     <div className="space-y-8">
       <h1 className="text-2xl font-bold text-slate-100">Escenarios — Stress Test</h1>
+
+      <p className="rounded border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-slate-400">
+        Los shocks se aplican sobre retornos en {BASE_CURRENCY} con el{' '}
+        <span className="text-slate-300">tipo de cambio fijo</span>. En la realidad, un selloff global
+        suele fortalecer el dólar frente al peso y amortiguar parcialmente la caída de la porción en
+        USD: el escenario que ves es, en ese sentido, conservador.
+      </p>
 
       <section className="space-y-4">
         <div className="flex flex-wrap items-end gap-3">
