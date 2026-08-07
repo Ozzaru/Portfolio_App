@@ -25,12 +25,23 @@ export async function POST() {
     yahoo: createYahooAdapter(defaultFetcher),
     coingecko: createCoinGeckoAdapter(defaultFetcher),
   }
-  // Igual que en el backfill: el FX entra como AssetRef sintético hacia Yahoo.
-  const refs: AssetRef[] = [
-    ...((assets ?? []) as AssetRef[]),
-    { ticker: FX_TICKER, asset_type: 'stock' },
-  ]
-  const { quotes, results } = await refreshQuotes(refs, adapters)
+  const { quotes, results } = await refreshQuotes((assets ?? []) as AssetRef[], adapters)
+
+  // El FX se pide APARTE, no dentro del grupo Yahoo: `refreshQuotes` captura por
+  // fuente y `fetchQuotes` itera en secuencia, así que un fallo del tipo de
+  // cambio descartaría todas las cotizaciones de acciones ya obtenidas.
+  try {
+    const fxQuotes = await adapters.yahoo.fetchQuotes([FX_TICKER])
+    quotes.push(...fxQuotes)
+    results.push({ source: 'yahoo-fx', ok: true, count: fxQuotes.length })
+  } catch (e) {
+    results.push({
+      source: 'yahoo-fx',
+      ok: false,
+      count: 0,
+      error: e instanceof Error ? e.message : String(e),
+    })
+  }
 
   // Upsert de cada cotización de hoy en price_cache (idempotente por la unique).
   if (quotes.length > 0) {
