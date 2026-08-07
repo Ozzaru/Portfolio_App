@@ -26,4 +26,14 @@ describe('formatMoney', () => {
   it('devuelve — para valores no finitos', () => {
     expect(formatMoney(Number.NaN, 'CLP')).toBe('—')
   })
+
+  it('degrada en vez de lanzar con un código de moneda inválido', () => {
+    // El CHECK de la BD solo exige 3 caracteres en mayúsculas, así que un código
+    // no-ISO es persistible. Intl lanza RangeError con él, y esto se usa en el
+    // render de páginas cliente: una celda mal formateada es aceptable, tumbar
+    // la página no.
+    const out = formatMoney(1234.5, '123')
+    expect(out).toContain('1.234')
+    expect(out).toContain('123')
+  })
 })
