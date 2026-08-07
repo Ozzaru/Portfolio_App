@@ -31,8 +31,26 @@ export function convertSeries(
     throw new Error(`moneda no soportada: ${currency} (solo USD y ${BASE_CURRENCY})`)
   }
   const out: PricePointAdj[] = []
+  // Ambas series vienen ordenadas por fecha, así que se recorren con un cursor
+  // en tiempo lineal. Llamar a `fxAsOf` por punto sería O(puntos × puntosFX):
+  // `priceAsOf` rebobina la serie FX completa en cada llamada, y con 5 años de
+  // historia diaria eso son millones de comparaciones por request.
+  //
+  // PRECONDICIÓN: `points` debe venir ordenado ascendente por fecha (igual que
+  // `fxSeries`, exigido ya por `priceAsOf`/`loadFxSeries`). Es el contrato
+  // documentado de `PriceSeriesByTicker` y lo cumplen los tres constructores
+  // reales (analytics/backtest/scenarios routes, `ORDER BY price_date asc`).
+  // Si se rompe, el cursor NO retrocede y esta función da resultados
+  // incorrectos en silencio — ver test "asume orden ascendente" en
+  // convert.test.ts, que fija ese comportamiento a propósito.
+  let cursor = 0
+  let rate: number | null = null
   for (const p of points) {
-    const rate = fxAsOf(fxSeries, p.date)
+    while (cursor < fxSeries.length && fxSeries[cursor].date <= p.date) {
+      const candidate = fxSeries[cursor]
+      rate = candidate.price > 0 ? candidate.price : null
+      cursor++
+    }
     if (rate === null) continue
     out.push({ date: p.date, price: p.price * rate, adjPrice: p.adjPrice * rate })
   }

@@ -70,6 +70,31 @@ describe('convertSeries', () => {
   it('lanza ante una moneda no soportada en vez de convertirla mal', () => {
     expect(() => convertSeries(usdPoints, 'EUR', FX_SERIES)).toThrow(/no soportada/)
   })
+
+  it('asume que `points` viene ordenado ascendente (precondición documentada en PriceSeriesByTicker); con orden roto el cursor no retrocede y arrastra un FX obsoleto', () => {
+    // El cursor lineal recorre `fxSeries` una sola vez, hacia adelante, para
+    // no volver a rebobinarla en cada punto (esa es la optimización). Eso
+    // solo es correcto si `points` también avanza en el tiempo: los tres
+    // constructores reales (analytics/backtest/scenarios routes) arman la
+    // serie con `ORDER BY price_date ascending`, y `priceAsOf`/`loadFxSeries`
+    // documentan el mismo requisito para `fxSeries`. Este test fija a
+    // propósito qué pasa si esa precondición se rompe, para que quede como
+    // contrato explícito y no como detalle interno que alguien confía en
+    // "simplemente funciona" sin importar el orden.
+    const unsortedPoints: PricePointAdj[] = [
+      { date: '2026-01-09', price: 100, adjPrice: 100 },
+      { date: '2026-01-05', price: 50, adjPrice: 50 },
+    ]
+    const out = convertSeries(unsortedPoints, 'USD', FX_SERIES)
+    const outOfOrderPoint = out.find((p) => p.date === '2026-01-05')
+    // Con lookup punto a punto (fxAsOf independiente por fecha, la
+    // implementación anterior) esto habría dado 50 * 900 = 45.000 (el FX
+    // vigente el 2026-01-05). El cursor, que ya avanzó hasta el final de
+    // fxSeries procesando el punto 2026-01-09, arrastra el último FX visto
+    // (950) en vez de retroceder: 50 * 950 = 47.500.
+    expect(outOfOrderPoint?.price).toBe(47_500)
+    expect(outOfOrderPoint?.price).not.toBe(45_000)
+  })
 })
 
 describe('toBaseCurrency', () => {
