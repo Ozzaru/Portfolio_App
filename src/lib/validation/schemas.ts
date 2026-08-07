@@ -21,12 +21,17 @@ export const assetInputSchema = z.object({
 })
 export type AssetInput = z.infer<typeof assetInputSchema>
 
+// `fees` no se recibe del cliente: la ruta lo deriva como commission + iva,
+// que es el invariante que el CHECK `fees_breakdown` garantiza en la BD.
+// No se valida que el IVA sea exactamente 19% de la comisión: los brokers
+// redondean (Zesty cobra 6 sobre 5,51) y difieren entre sí.
 export const transactionInputSchema = z.object({
   assetId: z.string().uuid(),
   side: z.enum(['buy', 'sell']),
   quantity: z.coerce.number().positive(),
   price: z.coerce.number().nonnegative(),
-  fees: z.coerce.number().nonnegative().default(0),
+  commission: z.coerce.number().nonnegative().default(0),
+  iva: z.coerce.number().nonnegative().default(0),
   executedAt: z.string().regex(DATE_RE, 'formato esperado YYYY-MM-DD'),
 })
 export type TransactionInput = z.infer<typeof transactionInputSchema>
