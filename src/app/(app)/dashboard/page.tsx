@@ -17,6 +17,8 @@ import {
 } from 'recharts'
 import { PeriodSelector } from '@/components/period-selector'
 import { usePeriod, useBenchmark } from '@/lib/hooks/use-prefs'
+import { formatMoney } from '@/lib/format/money'
+import { BASE_CURRENCY } from '@/lib/fx/constants'
 
 interface Position {
   assetId: string
@@ -28,6 +30,8 @@ interface Position {
   marketValue: number | null
   unrealizedPnl: number | null
   unrealizedPnlPct: number | null
+  nativeCurrency: string
+  nativePrice: number | null
 }
 
 interface Totals {
@@ -47,8 +51,7 @@ interface SeriesPoint {
 
 const COLORS = ['#3b82f6', '#22c55e', '#f97316', '#818cf8', '#ec4899', '#14b8a6', '#eab308', '#f43f5e']
 
-const fmt = (n: number) =>
-  n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+const fmt = (n: number) => formatMoney(n, BASE_CURRENCY)
 
 function KpiCard({ label, value, accent }: { label: string; value: string; accent?: 'up' | 'down' }) {
   const color = accent === 'up' ? 'text-green-400' : accent === 'down' ? 'text-red-400' : 'text-slate-100'
@@ -145,10 +148,10 @@ export default function DashboardPage() {
               <tr className="border-b border-slate-800 text-xs uppercase text-slate-500">
                 <th className="py-2">Ticker</th>
                 <th className="text-right">Cantidad</th>
-                <th className="text-right">Costo prom.</th>
+                <th className="text-right">Costo prom. ({BASE_CURRENCY})</th>
                 <th className="text-right">Precio</th>
-                <th className="text-right">Valor</th>
-                <th className="text-right">P&L</th>
+                <th className="text-right">Valor ({BASE_CURRENCY})</th>
+                <th className="text-right">P&L ({BASE_CURRENCY})</th>
               </tr>
             </thead>
             <tbody>
@@ -156,8 +159,10 @@ export default function DashboardPage() {
                 <tr key={p.assetId} className="border-b border-slate-900">
                   <td className="py-2 font-semibold">{p.ticker}</td>
                   <td className="text-right">{p.quantity}</td>
-                  <td className="text-right">{p.avgCost.toFixed(2)}</td>
-                  <td className="text-right">{p.currentPrice?.toFixed(2) ?? '—'}</td>
+                  <td className="text-right">{fmt(p.avgCost)}</td>
+                  <td className="text-right">
+                    {p.nativePrice === null ? '—' : formatMoney(p.nativePrice, p.nativeCurrency)}
+                  </td>
                   <td className="text-right">{p.marketValue !== null ? fmt(p.marketValue) : '—'}</td>
                   <td
                     className={`text-right ${
