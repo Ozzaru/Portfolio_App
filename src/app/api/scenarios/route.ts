@@ -7,6 +7,9 @@ import { scenarioConfigSchema } from '@/lib/validation/schemas'
 import { runScenario } from '@/lib/scenarios/engine'
 import type { AssetType, ScenarioHolding } from '@/lib/scenarios/types'
 import type { PriceSeriesByTicker, PricePointAdj } from '@/lib/analytics/types'
+import { loadFxSeries } from '@/lib/fx/load'
+import { toBaseCurrency, convertSeries, fxAsOf } from '@/lib/fx/convert'
+import { BASE_CURRENCY } from '@/lib/fx/constants'
 
 const BENCHMARK_TICKER = 'SPY'
 
@@ -23,7 +26,7 @@ export async function POST(request: Request) {
 
   const { data: txRows, error: txErr } = await supabase
     .from('transactions')
-    .select('asset_id, side, quantity, price, fees, executed_at, assets(ticker, asset_type)')
+    .select('asset_id, side, quantity, price, fees, executed_at, assets(ticker, asset_type, currency)')
   if (txErr) return NextResponse.json({ error: txErr.message }, { status: 500 })
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -39,6 +42,10 @@ export async function POST(request: Request) {
   const assetTypeByTicker = new Map<string, AssetType>()
   for (const row of (txRows ?? []) as any[]) {
     if (row.assets?.ticker) assetTypeByTicker.set(row.assets.ticker, (row.assets.asset_type ?? 'other') as AssetType)
+  }
+  const currencyByTicker = new Map<string, string>()
+  for (const row of (txRows ?? []) as any[]) {
+    if (row.assets?.ticker) currencyByTicker.set(row.assets.ticker, row.assets.currency ?? 'USD')
   }
   /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -85,10 +92,26 @@ export async function POST(request: Request) {
   for (const t of portfolioTickers) priceSeries.set(t, byTicker.get(t) ?? [])
   const benchmarkSeries = byTicker.get(BENCHMARK_TICKER) ?? null
 
-  // Precio crudo ACTUAL = último de la serie (el lookback incluye lo reciente).
+  const fxSeries = await loadFxSeries(supabase, lookbackFrom)
+
+  // El resultado se expresa en CLP, así que el precio actual también.
+  // El shock se aplica sobre retornos ya en CLP con el FX FIJO: en la realidad
+  // un selloff global suele fortalecer el dólar frente al peso y amortiguar la
+  // caída para un tenedor chileno, así que el escenario es conservador.
+  const today = new Date().toISOString().slice(0, 10)
+  const fxToday = fxAsOf(fxSeries, today)
   const scenarioHoldings: ScenarioHolding[] = holdings.map((h) => {
     const series = byTicker.get(h.ticker) ?? []
-    const currentPrice = series.length ? series[series.length - 1].price : null
+    const nativePrice = series.length ? series[series.length - 1].price : null
+    const currency = currencyByTicker.get(h.ticker) ?? 'USD'
+    const currentPrice =
+      nativePrice === null
+        ? null
+        : currency === BASE_CURRENCY
+          ? nativePrice
+          : fxToday !== null
+            ? nativePrice * fxToday
+            : null
     return {
       ticker: h.ticker,
       assetType: assetTypeByTicker.get(h.ticker) ?? 'other',
@@ -101,8 +124,8 @@ export async function POST(request: Request) {
     const result = runScenario({
       config,
       holdings: scenarioHoldings,
-      priceSeries,
-      benchmarkSeries,
+      priceSeries: toBaseCurrency(priceSeries, currencyByTicker, fxSeries),
+      benchmarkSeries: benchmarkSeries ? convertSeries(benchmarkSeries, 'USD', fxSeries) : null,
       benchmarkTicker: BENCHMARK_TICKER,
     })
     return NextResponse.json(result)
