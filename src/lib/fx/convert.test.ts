@@ -1,7 +1,7 @@
 // src/lib/fx/convert.test.ts
 import { describe, it, expect } from 'vitest'
-import type { PricePointAdj } from '@/lib/analytics/types'
-import { fxAsOf, convertSeries } from './convert'
+import type { PricePointAdj, PriceSeriesByTicker } from '@/lib/analytics/types'
+import { fxAsOf, convertSeries, toBaseCurrency } from './convert'
 
 const fx = (date: string, price: number): PricePointAdj => ({ date, price, adjPrice: price })
 
@@ -68,5 +68,29 @@ describe('convertSeries', () => {
 
   it('lanza ante una moneda no soportada en vez de convertirla mal', () => {
     expect(() => convertSeries(usdPoints, 'EUR', FX_SERIES)).toThrow(/no soportada/)
+  })
+})
+
+describe('toBaseCurrency', () => {
+  it('convierte los USD y deja los CLP intactos, en el mismo mapa', () => {
+    const series: PriceSeriesByTicker = new Map([
+      ['AAPL', [{ date: '2026-01-05', price: 100, adjPrice: 100 }]],
+      ['ENELCHILE.SN', [{ date: '2026-01-05', price: 79.68, adjPrice: 79.68 }]],
+    ])
+    const currencies = new Map([
+      ['AAPL', 'USD'],
+      ['ENELCHILE.SN', 'CLP'],
+    ])
+    const out = toBaseCurrency(series, currencies, FX_SERIES)
+    expect(out.get('AAPL')![0].price).toBe(90_000)
+    expect(out.get('ENELCHILE.SN')![0].price).toBe(79.68)
+  })
+
+  it('asume USD cuando el ticker no tiene moneda declarada (default del esquema)', () => {
+    const series: PriceSeriesByTicker = new Map([
+      ['SPY', [{ date: '2026-01-05', price: 100, adjPrice: 100 }]],
+    ])
+    const out = toBaseCurrency(series, new Map(), FX_SERIES)
+    expect(out.get('SPY')![0].price).toBe(90_000)
   })
 })

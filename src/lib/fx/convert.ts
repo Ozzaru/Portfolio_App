@@ -1,6 +1,6 @@
 // src/lib/fx/convert.ts
 import { priceAsOf } from '@/lib/analytics/series'
-import type { PricePointAdj } from '@/lib/analytics/types'
+import type { PricePointAdj, PriceSeriesByTicker } from '@/lib/analytics/types'
 import { BASE_CURRENCY } from './constants'
 
 // Tipo de cambio vigente en `date` con forward-fill: un feriado en Chile con
@@ -34,6 +34,24 @@ export function convertSeries(
     const rate = fxAsOf(fxSeries, p.date)
     if (rate === null) continue
     out.push({ date: p.date, price: p.price * rate, adjPrice: p.adjPrice * rate })
+  }
+  return out
+}
+
+// Normaliza todas las series de un mapa a la moneda base. Este es el punto
+// ÚNICO de conversión: aguas abajo los motores ven una sola moneda y no se
+// modifican (Decisión 2).
+// Un ticker sin moneda declarada se asume USD, que es el default del esquema
+// (`assets.currency default 'USD'`) y cubre al benchmark, que no tiene fila
+// en `assets`.
+export function toBaseCurrency(
+  series: PriceSeriesByTicker,
+  currencyByTicker: Map<string, string>,
+  fxSeries: PricePointAdj[]
+): PriceSeriesByTicker {
+  const out: PriceSeriesByTicker = new Map()
+  for (const [ticker, points] of series) {
+    out.set(ticker, convertSeries(points, currencyByTicker.get(ticker) ?? 'USD', fxSeries))
   }
   return out
 }
