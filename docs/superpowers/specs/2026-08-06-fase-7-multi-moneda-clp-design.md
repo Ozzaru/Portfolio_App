@@ -135,6 +135,13 @@ El script de migración multiplica cada `total_value` histórico por el `USDCLP=
 nueva arquitectura. Es **idempotente por construcción**: solo toca filas con `currency is null`
 y las marca al convertirlas, así que correrlo dos veces no puede doble-convertir.
 
+**Automatizado y atómico, no manual.** Las dos precondiciones se verifican **dentro** de un
+bloque `DO $$ … END $$` y abortan con `RAISE EXCEPTION`. Como PostgreSQL tiene **DDL
+transaccional**, la excepción revierte la migración **completa** —incluidos los `ALTER TABLE`
+de las columnas nuevas— dejando la base exactamente como estaba. Seguridad y automatización sin
+tener que elegir entre ambas: no hay estado intermedio posible en el que las columnas existan
+pero el histórico esté a medio convertir.
+
 ### Decisión 10 — Transacciones sin FX: fallar ruidosamente (≠ series de precios)
 La regla de descarte de la Decisión 7.3 aplica a **series de precios**, donde perder un punto
 solo encoge la muestra. **No aplica a transacciones**: descartar una compra alteraría los
@@ -238,51 +245,77 @@ enruta a Yahoo por símbolo, no por `asset_type` (no tiene fila en `assets`).
 
 ### Migración (`supabase/migrations/0003_multi_currency.sql`)
 
+**Prerrequisito (único paso manual):** backfillear `USDCLP=X` en `price_cache` cubriendo todo el
+rango de `snapshot_date` **antes** de ejecutar la migración. Va por el endpoint de backfill de
+la app, no por SQL. La Guarda B lo verifica y aborta si falta, así que olvidarlo no puede
+corromper nada.
+
 ```sql
+-- supabase/migrations/0003_multi_currency.sql
+-- Ejecutar COMPLETO en el SQL Editor. DDL transaccional: si una guarda falla,
+-- revierte todo (columnas incluidas) y la base queda como estaba.
+
 -- 1. Costos desglosados
 alter table transactions add column commission numeric not null default 0 check (commission >= 0);
 alter table transactions add column iva        numeric not null default 0 check (iva >= 0);
 update transactions set commission = fees, iva = 0;          -- histórico: todo era comisión
 alter table transactions add constraint fees_breakdown check (fees = commission + iva);
 
--- 2. Moneda del snapshot (nullable primero; el backfill la rellena)
+-- 2. Moneda del snapshot (nullable primero; el bloque de abajo la rellena)
 alter table snapshots add column currency text;
+
+-- 3. Guardas + conversión, atómico
+do $$
+declare
+  mixed_assets int;
+  missing_fx   int;
+begin
+  -- Guarda A: el histórico debe ser USD puro. Si ya hubiera un activo en otra
+  -- moneda dentro del rango, multiplicar el total por el FX sería incorrecto.
+  select count(*) into mixed_assets
+  from assets a
+  where a.currency <> 'USD'
+    and exists (select 1 from transactions t
+                where t.asset_id = a.id
+                  and t.executed_at <= (select max(snapshot_date) from snapshots));
+
+  if mixed_assets > 0 then
+    raise exception
+      'Abortado: % activo(s) no-USD con transacciones dentro del rango de snapshots. '
+      'El histórico no es USD puro; convertirlo en bloque falsearía el patrimonio.', mixed_assets;
+  end if;
+
+  -- Guarda B: debe existir FX para cada snapshot a convertir.
+  select count(*) into missing_fx
+  from snapshots s
+  where s.currency is null
+    and not exists (select 1 from price_cache pc
+                    where pc.ticker = 'USDCLP=X' and pc.price_date <= s.snapshot_date);
+
+  if missing_fx > 0 then
+    raise exception
+      'Abortado: % snapshot(s) sin USDCLP=X disponible a su fecha. '
+      'Ejecuta primero el backfill de FX.', missing_fx;
+  end if;
+
+  -- Conversión idempotente: solo filas sin moneda; forward-fill del FX.
+  update snapshots s
+  set total_value = s.total_value * (
+        select pc.price from price_cache pc
+        where pc.ticker = 'USDCLP=X' and pc.price_date <= s.snapshot_date
+        order by pc.price_date desc limit 1),
+      currency = 'CLP'
+  where s.currency is null;
+end $$;
+
+-- 4. Cierre
+alter table snapshots alter column currency set default 'CLP';
+alter table snapshots alter column currency set not null;
 ```
 
-**Runbook del backfill de snapshots** (un solo uso, en este orden):
-
-1. Backfillear `USDCLP=X` en `price_cache` cubriendo todo el rango de `snapshot_date`.
-2. **Guarda A** — debe devolver `0`; si no, abortar (habría CLP mezclado en el histórico y
-   multiplicar el total por el FX sería incorrecto):
-   ```sql
-   select count(*) from assets a
-   where a.currency <> 'USD'
-     and exists (select 1 from transactions t
-                 where t.asset_id = a.id
-                   and t.executed_at <= (select max(snapshot_date) from snapshots));
-   ```
-3. **Guarda B** — debe devolver `0` (snapshots sin FX disponible a esa fecha):
-   ```sql
-   select count(*) from snapshots s
-   where s.currency is null
-     and not exists (select 1 from price_cache pc
-                     where pc.ticker = 'USDCLP=X' and pc.price_date <= s.snapshot_date);
-   ```
-4. **Conversión** (idempotente: solo `currency is null`; forward-fill vía `order by … desc limit 1`):
-   ```sql
-   update snapshots s
-   set total_value = s.total_value * (
-         select pc.price from price_cache pc
-         where pc.ticker = 'USDCLP=X' and pc.price_date <= s.snapshot_date
-         order by pc.price_date desc limit 1),
-       currency = 'CLP'
-   where s.currency is null;
-   ```
-5. **Cierre:**
-   ```sql
-   alter table snapshots alter column currency set default 'CLP';
-   alter table snapshots alter column currency set not null;
-   ```
+**Base vacía:** con `snapshots` sin filas, `max(snapshot_date)` es `NULL`, ambas guardas cuentan
+`0`, el `update` afecta 0 filas y el `set not null` pasa. La migración es segura en una
+instalación nueva.
 
 ### Validación (`src/lib/validation/schemas.ts`)
 `transactionInputSchema` reemplaza `fees` por `commission` e `iva` (ambos
@@ -327,8 +360,9 @@ valida que el IVA sea exactamente 19% de la comisión: los brokers redondean y d
 - `fees = commission + iva` en la ruta de transacciones; el CHECK rechaza escrituras
   inconsistentes.
 - `formatMoney`: CLP sin decimales, USD con dos.
-- Migración: **guardas A y B** verificadas manualmente contra la BD antes de ejecutar;
-  **idempotencia** comprobada corriendo el `update` dos veces (la segunda afecta 0 filas).
+- Migración: **guardas A y B** abortan con `RAISE EXCEPTION` y revierten la transacción completa
+  (verificar que las columnas **no** quedan creadas tras un fallo); **idempotencia** comprobada
+  corriendo el bloque dos veces (la segunda afecta 0 filas); **base vacía** ejecuta sin error.
 - Rutas, páginas y migración se validan con **lint + build + e2e**, igual que las Fases 4-6.
 
 ## 5. Decisiones clave (resumen)
@@ -343,7 +377,8 @@ valida que el IVA sea exactamente 19% de la comisión: los brokers redondean y d
 7. `toBaseCurrency`: **nunca agrega fechas**, CLP pasa directo, falta de FX **descarta** el punto.
 8. **Bifurcación de calendarios**: unión + ffill para NAV/Sharpe/vol del portafolio;
    intersección estricta para correlación y covarianza.
-9. Snapshots: columna `currency` + backfill **idempotente** con dos guardas previas.
+9. Snapshots: columna `currency` + backfill **idempotente** con dos guardas en un bloque
+   `DO $$` que aborta con `RAISE EXCEPTION` y revierte la migración completa.
 10. Falta de FX en **transacciones falla ruidosamente** (a diferencia de las series de precios).
 11. Escenarios con **FX fijo**; supuesto visible en la página.
 12. Alertas en **moneda nativa**, motor sin cambios.
