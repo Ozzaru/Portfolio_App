@@ -15,6 +15,8 @@ import {
 import { PeriodSelector } from '@/components/period-selector'
 import { BenchmarkSelector } from '@/components/benchmark-selector'
 import { usePeriod, useBenchmark } from '@/lib/hooks/use-prefs'
+import { formatMoney } from '@/lib/format/money'
+import { BASE_CURRENCY } from '@/lib/fx/constants'
 
 interface AnalyticsData {
   series: { date: string; portfolio: number; benchmark: number | null }[]
@@ -32,8 +34,7 @@ interface AnalyticsData {
 }
 
 const pct = (n: number | null) => (n === null ? '—' : `${(n * 100).toFixed(1)}%`)
-const usd = (n: number | null) =>
-  n === null ? '—' : n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+const money = (n: number | null) => formatMoney(n, BASE_CURRENCY)
 const num = (n: number | null) => (n === null ? '—' : n.toFixed(2))
 
 function MetricCard({ label, value, accent }: { label: string; value: string; accent?: 'up' | 'down' }) {
@@ -120,10 +121,10 @@ export default function AnalyticsPage() {
               value={pct(s.portfolioTwr)}
               accent={s.portfolioTwr === null ? undefined : s.portfolioTwr >= 0 ? 'up' : 'down'}
             />
-            <MetricCard label="Benchmark (TWR)" value={pct(s.benchmarkTwr)} />
+            <MetricCard label={`Benchmark (TWR, en ${BASE_CURRENCY})`} value={pct(s.benchmarkTwr)} />
             <MetricCard
               label="P&L del período"
-              value={usd(s.absolutePnl)}
+              value={money(s.absolutePnl)}
               accent={s.absolutePnl === null ? undefined : s.absolutePnl >= 0 ? 'up' : 'down'}
             />
             <MetricCard label="Volatilidad" value={pct(s.volatility)} />
@@ -146,7 +147,7 @@ export default function AnalyticsPage() {
                   <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', color: '#e2e8f0' }} />
                   <Legend />
                   <Line type="monotone" dataKey="portfolio" name="Portafolio" stroke="#3b82f6" dot={false} />
-                  <Line type="monotone" dataKey="benchmark" name="Benchmark" stroke="#22c55e" dot={false} />
+                  <Line type="monotone" dataKey="benchmark" name={`Benchmark (${BASE_CURRENCY})`} stroke="#22c55e" dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
