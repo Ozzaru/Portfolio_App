@@ -1,7 +1,7 @@
 // src/lib/fx/convert.test.ts
 import { describe, it, expect } from 'vitest'
 import type { PricePointAdj } from '@/lib/analytics/types'
-import { fxAsOf } from './convert'
+import { fxAsOf, convertSeries } from './convert'
 
 const fx = (date: string, price: number): PricePointAdj => ({ date, price, adjPrice: price })
 
@@ -30,5 +30,43 @@ describe('fxAsOf', () => {
 
   it('devuelve null con serie vacía', () => {
     expect(fxAsOf([], '2026-01-05')).toBeNull()
+  })
+})
+
+describe('convertSeries', () => {
+  const usdPoints: PricePointAdj[] = [
+    { date: '2026-01-05', price: 100, adjPrice: 90 },
+    { date: '2026-01-06', price: 200, adjPrice: 180 },
+  ]
+
+  it('multiplica price y adjPrice por el FX del día (dirección: CLP por 1 USD)', () => {
+    const out = convertSeries(usdPoints, 'USD', FX_SERIES)
+    expect(out[0]).toEqual({ date: '2026-01-05', price: 90_000, adjPrice: 81_000 })
+    expect(out[1]).toEqual({ date: '2026-01-06', price: 182_000, adjPrice: 163_800 })
+  })
+
+  it('deja los valores en CLP sin modificar (pasa directo, sin redondeo)', () => {
+    const clpPoints: PricePointAdj[] = [{ date: '2026-01-05', price: 79.68, adjPrice: 79.68 }]
+    expect(convertSeries(clpPoints, 'CLP', FX_SERIES)).toEqual(clpPoints)
+  })
+
+  it('descarta el punto si falta FX para su fecha (nunca lo deja pasar sin convertir)', () => {
+    const points: PricePointAdj[] = [
+      { date: '2026-01-02', price: 100, adjPrice: 100 },
+      { date: '2026-01-05', price: 100, adjPrice: 100 },
+    ]
+    const out = convertSeries(points, 'USD', FX_SERIES)
+    expect(out).toHaveLength(1)
+    expect(out[0].date).toBe('2026-01-05')
+  })
+
+  it('nunca agrega fechas: la salida es subconjunto de la entrada', () => {
+    const out = convertSeries(usdPoints, 'USD', FX_SERIES)
+    const input = new Set(usdPoints.map((p) => p.date))
+    for (const p of out) expect(input.has(p.date)).toBe(true)
+  })
+
+  it('lanza ante una moneda no soportada en vez de convertirla mal', () => {
+    expect(() => convertSeries(usdPoints, 'EUR', FX_SERIES)).toThrow(/no soportada/)
   })
 })
