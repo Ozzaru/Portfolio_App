@@ -12,6 +12,9 @@ import { computeAnalytics } from '@/lib/analytics/engine'
 import { benchmarkPreset } from '@/lib/analytics/benchmarks'
 import type { Period, PricePointAdj, PriceSeriesByTicker } from '@/lib/analytics/types'
 import type { Transaction } from '@/lib/portfolio/holdings'
+import { loadFxSeries } from '@/lib/fx/load'
+import { toBaseCurrency, convertSeries, transactionsToBaseCurrency } from '@/lib/fx/convert'
+import { FX_TICKER } from '@/lib/fx/constants'
 
 const PERIODS: Period[] = ['1W', '1M', '3M', '1Y', 'ALL']
 
@@ -32,7 +35,7 @@ export async function GET(request: Request) {
   // Transacciones + tipos de activo del usuario.
   const { data: txRows, error: txErr } = await supabase
     .from('transactions')
-    .select('asset_id, side, quantity, price, fees, executed_at, assets(ticker, asset_type)')
+    .select('asset_id, side, quantity, price, fees, executed_at, assets(ticker, asset_type, currency)')
   if (txErr) return NextResponse.json({ error: txErr.message }, { status: 500 })
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -49,6 +52,10 @@ export async function GET(request: Request) {
   for (const row of (txRows ?? []) as any[]) {
     if (row.assets?.ticker) assetTypeByTicker.set(row.assets.ticker, row.assets.asset_type)
   }
+  const currencyByTicker = new Map<string, string>()
+  for (const row of (txRows ?? []) as any[]) {
+    if (row.assets?.ticker) currencyByTicker.set(row.assets.ticker, row.assets.currency ?? 'USD')
+  }
   /* eslint-enable @typescript-eslint/no-explicit-any */
 
   const userTickers = [...assetTypeByTicker.keys()]
@@ -60,13 +67,22 @@ export async function GET(request: Request) {
     try {
       const benchCount = await countBenchmarkRows(supabase, benchmarkTicker)
       if (benchCount < 2) {
-        await downloadBenchmark(supabase, preset.ticker, preset.assetType)
+        await downloadSeries(supabase, preset.ticker, preset.assetType)
       }
     } catch (e) {
       benchmarkError = e instanceof Error ? e.message : 'benchmark no disponible'
     }
   } else {
     benchmarkError = `benchmark "${benchmarkTicker}" no reconocido`
+  }
+
+  // El FX es un ticker más: si no hay historia, se descarga como el benchmark.
+  try {
+    if ((await countBenchmarkRows(supabase, FX_TICKER)) < 2) {
+      await downloadSeries(supabase, FX_TICKER, 'etf') // 'etf' lo enruta a Yahoo
+    }
+  } catch (e) {
+    benchmarkError = benchmarkError ?? (e instanceof Error ? e.message : 'FX no disponible')
   }
 
   // Cargar price_cache de los tickers del usuario + el benchmark.
@@ -110,10 +126,21 @@ export async function GET(request: Request) {
     benchmarkSeries = byTicker.get(benchmarkTicker) ?? null
   }
 
+  // Frontera: todo pasa a CLP antes del motor, que permanece agnóstico.
+  const fxSeries = await loadFxSeries(supabase)
+  let baseTransactions: Transaction[]
+  try {
+    baseTransactions = transactionsToBaseCurrency(transactions, currencyByTicker, fxSeries)
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'error de conversión' }, { status: 500 })
+  }
+
   const result = computeAnalytics({
-    transactions,
-    priceSeries,
-    benchmarkSeries,
+    transactions: baseTransactions,
+    priceSeries: toBaseCurrency(priceSeries, currencyByTicker, fxSeries),
+    // Los benchmarks del preset (SPY, BTC) cotizan en USD. Compararlos sin
+    // convertir contra una cartera en CLP no significaría nada.
+    benchmarkSeries: benchmarkSeries ? convertSeries(benchmarkSeries, 'USD', fxSeries) : null,
     benchmarkTicker,
     assetTypeByTicker,
     period,
@@ -133,7 +160,7 @@ async function countBenchmarkRows(supabase: any, ticker: string): Promise<number
   return count ?? 0
 }
 
-async function downloadBenchmark(supabase: any, ticker: string, assetType: 'etf' | 'crypto') {
+async function downloadSeries(supabase: any, ticker: string, assetType: 'etf' | 'crypto') {
   const apiKey = process.env.ALPHA_VANTAGE_API_KEY
   const adapters = {
     yahoo: createYahooAdapter(defaultFetcher),

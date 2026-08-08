@@ -38,9 +38,18 @@ export async function refreshQuotes(
     const tickers = groups[src]
     if (tickers.length === 0) continue
     try {
-      const got = await adapters[src].fetchQuotes(tickers)
+      const { quotes: got, failed } = await adapters[src].fetchQuotes(tickers)
       quotes.push(...got)
-      results.push({ source: src, ok: true, count: got.length })
+      results.push({
+        source: src,
+        ok: true,
+        count: got.length,
+        // Fallo parcial: la fuente responde, pero algún ticker concreto no existe
+        // (típicamente falta el sufijo de mercado, ej. `.SN` en la Bolsa de Santiago).
+        ...(failed.length > 0
+          ? { failed, error: `${failed.length} ticker(s) sin datos: ${failed.map((f) => f.ticker).join(', ')}` }
+          : {}),
+      })
     } catch (e) {
       results.push({ source: src, ok: false, count: 0, error: errorMessage(e) })
     }

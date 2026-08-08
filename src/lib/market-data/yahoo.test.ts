@@ -58,8 +58,28 @@ describe('createYahooAdapter', () => {
 
   it('fetchQuotes devuelve una cotización por ticker usando el fetcher inyectado', async () => {
     const a = createYahooAdapter(async () => sample)
-    const quotes = await a.fetchQuotes(['AAPL'])
+    const { quotes, failed } = await a.fetchQuotes(['AAPL'])
     expect(quotes).toEqual([{ ticker: 'AAPL', price: 175.5, date: '2024-06-15' }])
+    expect(failed).toEqual([])
+  })
+
+  // Caso real: el usuario creó el activo chileno como "ENELCHILE" (sin el
+  // sufijo .SN que exige Yahoo para la Bolsa de Santiago). Esa petición
+  // respondía HTTP 404 y, como el bucle antiguo relanzaba el error, tumbaba
+  // TODO el lote — incluso cotizaciones válidas como AAPL o ASML se perdían.
+  // Un ticker inválido debe fallar solo, sin descartar a los demás.
+  it('un ticker inválido no descarta las cotizaciones de los demás; se reporta en `failed`', async () => {
+    const fetcher = async (url: string) => {
+      if (url.includes('ENELCHILE')) throw new Error('HTTP 404')
+      return sample
+    }
+    const a = createYahooAdapter(fetcher)
+    const { quotes, failed } = await a.fetchQuotes(['AAPL', 'ENELCHILE', 'ASML'])
+    expect(quotes).toEqual([
+      { ticker: 'AAPL', price: 175.5, date: '2024-06-15' },
+      { ticker: 'ASML', price: 175.5, date: '2024-06-15' },
+    ])
+    expect(failed).toEqual([{ ticker: 'ENELCHILE', error: 'HTTP 404' }])
   })
 
   it('fetchHistory devuelve los puntos históricos (raw + adjusted)', async () => {

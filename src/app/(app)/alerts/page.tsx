@@ -3,14 +3,18 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import type { AlertType } from '@/lib/alerts/types'
+import { formatMoney } from '@/lib/format/money'
 
 interface Asset {
   id: string
   ticker: string
+  currency: string
 }
 interface Position {
   ticker: string
   currentPrice: number | null
+  nativePrice: number | null
+  nativeCurrency: string
 }
 interface AlertView {
   id: string
@@ -36,12 +40,14 @@ const STATUS_LABEL: Record<AlertView['status'], string> = {
   triggered: 'Disparada',
   disabled: 'Silenciada',
 }
-const money = (x: number | null) =>
-  x == null ? '—' : x.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+// Los precios de alertas son NATIVOS: `price_cache` guarda la moneda de origen,
+// así que un umbral de ENELCHILE.SN son pesos y uno de AAPL son dólares. Se
+// formatean con la moneda del activo, nunca con la base.
+const money = (x: number | null, currency: string) => formatMoney(x, currency)
 
 export default function AlertsPage() {
   const [assets, setAssets] = useState<Asset[]>([])
-  const [pricesByTicker, setPricesByTicker] = useState<Record<string, number>>({})
+  const [pricesByTicker, setPricesByTicker] = useState<Record<string, { price: number; currency: string }>>({})
   const [alerts, setAlerts] = useState<AlertView[]>([])
   const [alertType, setAlertType] = useState<AlertType>('price_below')
   const [assetId, setAssetId] = useState('')
@@ -56,8 +62,10 @@ export default function AlertsPage() {
     fetch('/api/positions')
       .then((r) => (r.ok ? r.json() : null))
       .then((d: { positions: Position[] } | null) => {
-        const map: Record<string, number> = {}
-        for (const p of d?.positions ?? []) if (p.currentPrice != null) map[p.ticker] = p.currentPrice
+        const map: Record<string, { price: number; currency: string }> = {}
+        for (const p of d?.positions ?? []) {
+          if (p.nativePrice != null) map[p.ticker] = { price: p.nativePrice, currency: p.nativeCurrency }
+        }
         setPricesByTicker(map)
       })
     fetch('/api/alerts')
@@ -68,6 +76,17 @@ export default function AlertsPage() {
   useEffect(() => {
     loadAll()
   }, [loadAll])
+
+  // La moneda de un ticker sale de /api/assets (fuente de verdad: existe para
+  // todo activo, vendido o no, tenga o no precio cacheado). `pricesByTicker`
+  // viene de /api/positions, que solo cubre posiciones ABIERTAS con precio en
+  // caché — usarlo como fuente principal reintroduciría el mismo error de
+  // etiquetado (mostrar en USD un umbral que es en pesos) que esto arregla.
+  // 'USD' es el último recurso, igual que el default del esquema.
+  const currencyFor = useCallback(
+    (ticker: string) => assets.find((a) => a.ticker === ticker)?.currency ?? pricesByTicker[ticker]?.currency ?? 'USD',
+    [assets, pricesByTicker]
+  )
 
   async function create() {
     setError(null)
@@ -94,14 +113,14 @@ export default function AlertsPage() {
   }
 
   function reactivate(a: AlertView) {
-    const price = pricesByTicker[a.ticker]
+    const quote = pricesByTicker[a.ticker]
     const holds =
-      price !== undefined &&
-      ((a.alertType === 'price_above' && price > a.threshold) ||
-        (a.alertType === 'price_below' && price < a.threshold))
+      quote !== undefined &&
+      ((a.alertType === 'price_above' && quote.price > a.threshold) ||
+        (a.alertType === 'price_below' && quote.price < a.threshold))
     if (holds) {
       const ok = window.confirm(
-        `El precio actual (${money(price)}) ya cumple el umbral (${a.threshold}); se volverá a disparar en la próxima evaluación. ¿Reactivar de todos modos?`
+        `El precio actual (${money(quote.price, quote.currency)}) ya cumple el umbral (${money(a.threshold, quote.currency)}); se volverá a disparar en la próxima evaluación. ¿Reactivar de todos modos?`
       )
       if (!ok) return
     }
@@ -193,8 +212,16 @@ export default function AlertsPage() {
                 <tr key={a.id} className="border-b border-slate-900">
                   <td className="py-2 font-semibold">{a.ticker}</td>
                   <td className="px-4">{TYPE_LABEL[a.alertType]}</td>
-                  <td className="px-4 text-right">{a.threshold}{a.alertType === 'pct_change' ? '%' : ''}</td>
-                  <td className="px-4 text-right">{money(pricesByTicker[a.ticker] ?? null)}</td>
+                  <td className="px-4 text-right">
+                    {a.alertType === 'pct_change'
+                      ? `${a.threshold}%`
+                      : money(a.threshold, currencyFor(a.ticker))}
+                  </td>
+                  <td className="px-4 text-right">
+                    {pricesByTicker[a.ticker]
+                      ? money(pricesByTicker[a.ticker].price, pricesByTicker[a.ticker].currency)
+                      : '—'}
+                  </td>
                   <td className="px-4">{STATUS_LABEL[a.status]}</td>
                   <td className="px-4 text-right">
                     <div className="flex justify-end gap-2">

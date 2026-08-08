@@ -7,6 +7,9 @@ import { refreshQuotes, type AssetRef } from '@/lib/market-data/refresh'
 import { computeHoldings, type Transaction } from '@/lib/portfolio/holdings'
 import { computeSnapshotValue } from '@/lib/portfolio/snapshot'
 import { evaluateAndPersist } from '@/lib/alerts/run'
+import { FX_TICKER, BASE_CURRENCY } from '@/lib/fx/constants'
+import { loadFxSeries } from '@/lib/fx/load'
+import { fxAsOf, transactionsToBaseCurrency } from '@/lib/fx/convert'
 
 export async function POST() {
   const supabase = await createClient()
@@ -23,6 +26,27 @@ export async function POST() {
     coingecko: createCoinGeckoAdapter(defaultFetcher),
   }
   const { quotes, results } = await refreshQuotes((assets ?? []) as AssetRef[], adapters)
+
+  // El FX se pide APARTE, no dentro del grupo Yahoo: `refreshQuotes` captura por
+  // fuente y `fetchQuotes` itera en secuencia, así que un fallo del tipo de
+  // cambio descartaría todas las cotizaciones de acciones ya obtenidas.
+  try {
+    const { quotes: fxQuotes, failed: fxFailed } = await adapters.yahoo.fetchQuotes([FX_TICKER])
+    quotes.push(...fxQuotes)
+    results.push({
+      source: 'yahoo-fx',
+      ok: fxQuotes.length > 0,
+      count: fxQuotes.length,
+      ...(fxFailed.length > 0 ? { failed: fxFailed, error: fxFailed.map((f) => f.error).join('; ') } : {}),
+    })
+  } catch (e) {
+    results.push({
+      source: 'yahoo-fx',
+      ok: false,
+      count: 0,
+      error: e instanceof Error ? e.message : String(e),
+    })
+  }
 
   // Upsert de cada cotización de hoy en price_cache (idempotente por la unique).
   if (quotes.length > 0) {
@@ -64,7 +88,7 @@ function sourceOf(ticker: string, assets: any[]): string {
 async function takeSnapshot(supabase: any, userId: string, quotes: { ticker: string; price: number }[]) {
   const { data: txRows, error } = await supabase
     .from('transactions')
-    .select('asset_id, side, quantity, price, fees, executed_at, assets(ticker)')
+    .select('asset_id, side, quantity, price, fees, executed_at, assets(ticker, currency)')
   if (error) {
     console.error('snapshot: no se pudieron leer transactions:', error.message)
     return null
@@ -78,13 +102,37 @@ async function takeSnapshot(supabase: any, userId: string, quotes: { ticker: str
     fees: Number(row.fees),
     executedAt: row.executed_at,
   }))
+  const currencyByTicker = new Map<string, string>()
+  for (const row of (txRows ?? []) as any[]) {
+    if (row.assets?.ticker) currencyByTicker.set(row.assets.ticker, row.assets.currency ?? 'USD')
+  }
   if (computeHoldings(transactions).length === 0) return null
-  const totalValue = computeSnapshotValue(transactions, quotes)
+
+  // El snapshot se guarda en moneda BASE y con la moneda explícita, para que el
+  // histórico sea autodescriptivo y no vuelva a necesitar una migración.
   const today = new Date().toISOString().slice(0, 10)
+  let totalValue: number
+  try {
+    const fxSeries = await loadFxSeries(supabase)
+    const fxToday = fxAsOf(fxSeries, today)
+    const baseQuotes = quotes.flatMap((q) => {
+      const currency = currencyByTicker.get(q.ticker) ?? 'USD'
+      if (currency === BASE_CURRENCY) return [q]
+      return fxToday !== null ? [{ ticker: q.ticker, price: q.price * fxToday }] : []
+    })
+    totalValue = computeSnapshotValue(
+      transactionsToBaseCurrency(transactions, currencyByTicker, fxSeries),
+      baseQuotes
+    )
+  } catch (e) {
+    console.error('snapshot: conversión a', BASE_CURRENCY, 'falló:', e instanceof Error ? e.message : e)
+    return null
+  }
+
   const { error: snapErr } = await supabase
     .from('snapshots')
     .upsert(
-      { user_id: userId, snapshot_date: today, total_value: totalValue },
+      { user_id: userId, snapshot_date: today, total_value: totalValue, currency: BASE_CURRENCY },
       { onConflict: 'user_id,snapshot_date' }
     )
   if (snapErr) {

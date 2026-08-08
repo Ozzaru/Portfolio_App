@@ -1,4 +1,4 @@
-import type { JsonFetcher, MarketDataAdapter, PricePoint, Quote } from './types'
+import type { JsonFetcher, MarketDataAdapter, PricePoint, QuotesResult } from './types'
 
 const BASE = 'https://www.alphavantage.co/query'
 
@@ -27,8 +27,8 @@ export function createAlphaVantageAdapter(
   return {
     id: 'alpha-vantage',
     supports: (t) => t === 'stock' || t === 'etf',
-    async fetchQuotes(): Promise<Quote[]> {
-      return [] // no se usa para cotización actual
+    async fetchQuotes(): Promise<QuotesResult> {
+      return { quotes: [], failed: [] } // no se usa para cotización actual
     },
     async fetchHistory(ticker) {
       if (!apiKey) throw new Error('Alpha Vantage sin API key configurada')

@@ -12,6 +12,9 @@ import { backtestConfigSchema } from '@/lib/validation/schemas'
 import { validateWeights } from '@/lib/backtest/weights'
 import { runBacktest } from '@/lib/backtest/engine'
 import type { PriceSeriesByTicker, PricePointAdj } from '@/lib/analytics/types'
+import { loadFxSeries } from '@/lib/fx/load'
+import { toBaseCurrency, convertSeries } from '@/lib/fx/convert'
+import { FX_TICKER } from '@/lib/fx/constants'
 
 const BENCHMARK_TICKER = 'SPY'
 
@@ -32,7 +35,7 @@ export async function POST(request: Request) {
   // 2. Cartera real del usuario: tickers + tipo de activo.
   const { data: txRows, error: txErr } = await supabase
     .from('transactions')
-    .select('asset_id, side, quantity, price, fees, executed_at, assets(ticker, asset_type)')
+    .select('asset_id, side, quantity, price, fees, executed_at, assets(ticker, asset_type, currency)')
   if (txErr) return NextResponse.json({ error: txErr.message }, { status: 500 })
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -49,6 +52,10 @@ export async function POST(request: Request) {
   for (const row of (txRows ?? []) as any[]) {
     if (row.assets?.ticker) assetTypeByTicker.set(row.assets.ticker, row.assets.asset_type)
   }
+  const currencyByTicker = new Map<string, string>()
+  for (const row of (txRows ?? []) as any[]) {
+    if (row.assets?.ticker) currencyByTicker.set(row.assets.ticker, row.assets.currency ?? 'USD')
+  }
   /* eslint-enable @typescript-eslint/no-explicit-any */
 
   const holdings = computeHoldings(transactions)
@@ -62,6 +69,8 @@ export async function POST(request: Request) {
   const refs: AssetRef[] = [
     ...holdings.map((h) => ({ ticker: h.ticker, asset_type: (assetTypeByTicker.get(h.ticker) ?? 'stock') as AssetRef['asset_type'] })),
     { ticker: BENCHMARK_TICKER, asset_type: 'etf' },
+    // El backtest necesita FX diario cubriendo todo el período, igual que los precios.
+    { ticker: FX_TICKER, asset_type: 'etf' },
   ]
   try {
     await ensureHistory(supabase, refs, config.from)
@@ -104,12 +113,17 @@ export async function POST(request: Request) {
   const stockEtfTickers = portfolioTickers.filter((t) => assetTypeByTicker.get(t) !== 'crypto')
   const cryptoTickers = portfolioTickers.filter((t) => assetTypeByTicker.get(t) === 'crypto')
 
+  // Frontera: series en CLP; el motor de backtest no cambia.
+  // Serie FX completa, sin recortar por fecha: el forward-fill necesita el
+  // último punto ANTERIOR al inicio de la ventana, que un filtro `gte` eliminaría.
+  const fxSeries = await loadFxSeries(supabase)
+
   // 5. Ejecutar el motor puro.
   try {
     const result = runBacktest({
       config,
-      priceSeries,
-      benchmarkSeries,
+      priceSeries: toBaseCurrency(priceSeries, currencyByTicker, fxSeries),
+      benchmarkSeries: benchmarkSeries ? convertSeries(benchmarkSeries, 'USD', fxSeries) : null,
       benchmarkTicker: BENCHMARK_TICKER,
       stockEtfTickers,
       cryptoTickers,

@@ -14,6 +14,7 @@ import {
 } from 'recharts'
 import { equalWeights } from '@/lib/backtest/weights'
 import type { BacktestResult, RebalanceFrequency } from '@/lib/backtest/types'
+import { BASE_CURRENCY } from '@/lib/fx/constants'
 
 // /api/positions devuelve { positions: PositionView[], totals }; marketValue puede ser null.
 interface Position {
@@ -166,7 +167,7 @@ export default function BacktestPage() {
             <input type="date" className={`${inputCls} mt-1 block`} value={to} onChange={(e) => setTo(e.target.value)} />
           </label>
           <label className="text-sm text-slate-400">
-            Capital inicial
+            Capital inicial ({BASE_CURRENCY})
             <input
               type="number"
               step="any"

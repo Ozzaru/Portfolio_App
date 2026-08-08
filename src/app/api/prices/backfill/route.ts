@@ -6,6 +6,7 @@ import { createCoinGeckoAdapter } from '@/lib/market-data/coingecko'
 import { createAlphaVantageAdapter } from '@/lib/market-data/alpha-vantage'
 import { backfillHistory, type AssetRef } from '@/lib/market-data/refresh'
 import { isoYearsAgo } from '@/lib/market-data/dates'
+import { FX_TICKER } from '@/lib/fx/constants'
 
 export async function POST() {
   const supabase = await createClient()
@@ -25,7 +26,14 @@ export async function POST() {
   }
 
   const fromISO = isoYearsAgo(5)
-  const { rows, results } = await backfillHistory((assets ?? []) as AssetRef[], fromISO, adapters)
+  // El tipo de cambio se trata como un ticker más de Yahoo. No tiene fila en
+  // `assets`, así que se inyecta como AssetRef sintético: `asset_type: 'stock'`
+  // lo enruta a Yahoo vía quoteSourceFor.
+  const refs: AssetRef[] = [
+    ...((assets ?? []) as AssetRef[]),
+    { ticker: FX_TICKER, asset_type: 'stock' },
+  ]
+  const { rows, results } = await backfillHistory(refs, fromISO, adapters)
 
   // Upsert por lotes (idempotente). Lotes de 500 para no exceder límites de payload.
   for (let i = 0; i < rows.length; i += 500) {

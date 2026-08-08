@@ -29,7 +29,7 @@ describe('assetInputSchema', () => {
 })
 
 describe('transactionInputSchema', () => {
-  it('acepta números como string (inputs de formulario) y aplica fees=0 por defecto', () => {
+  it('acepta números como string (inputs de formulario) y aplica commission/iva=0 por defecto', () => {
     const r = transactionInputSchema.parse({
       assetId: UUID,
       side: 'buy',
@@ -39,7 +39,8 @@ describe('transactionInputSchema', () => {
     })
     expect(r.quantity).toBe(10)
     expect(r.price).toBe(99.5)
-    expect(r.fees).toBe(0)
+    expect(r.commission).toBe(0)
+    expect(r.iva).toBe(0)
   })
 
   it('rechaza cantidad cero o negativa', () => {
@@ -57,6 +58,36 @@ describe('transactionInputSchema', () => {
       executedAt: '15/01/2026',
     })
     expect(r.success).toBe(false)
+  })
+})
+
+describe('transactionInputSchema — comisión e IVA', () => {
+  const base = {
+    assetId: '11111111-1111-4111-8111-111111111111',
+    side: 'buy',
+    quantity: '244',
+    price: '79.68',
+    executedAt: '2026-08-05',
+  }
+
+  it('acepta comisión e IVA como strings de formulario', () => {
+    const r = transactionInputSchema.parse({ ...base, commission: '29', iva: '6' })
+    expect(r.commission).toBe(29)
+    expect(r.iva).toBe(6)
+  })
+
+  it('ambos por defecto 0 cuando no vienen', () => {
+    const r = transactionInputSchema.parse(base)
+    expect(r.commission).toBe(0)
+    expect(r.iva).toBe(0)
+  })
+
+  it('rechaza comisión negativa', () => {
+    expect(transactionInputSchema.safeParse({ ...base, commission: '-1' }).success).toBe(false)
+  })
+
+  it('rechaza IVA negativo', () => {
+    expect(transactionInputSchema.safeParse({ ...base, iva: '-1' }).success).toBe(false)
   })
 })
 

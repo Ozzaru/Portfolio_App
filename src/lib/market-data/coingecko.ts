@@ -1,4 +1,4 @@
-import type { JsonFetcher, MarketDataAdapter, PricePoint, Quote } from './types'
+import type { FailedTicker, JsonFetcher, MarketDataAdapter, PricePoint, Quote } from './types'
 import { msToISODate } from './dates'
 
 const BASE = 'https://api.coingecko.com/api/v3'
@@ -59,15 +59,21 @@ export function createCoinGeckoAdapter(fetcher: JsonFetcher): MarketDataAdapter 
     supports: (t) => t === 'crypto',
     async fetchQuotes(tickers) {
       const pairs: [string, string][] = []
+      const failed: FailedTicker[] = []
       for (const t of tickers) {
         const id = resolveCoinId(t)
         if (id) pairs.push([t, id])
+        // Sin id en el mapa curado: no hay nada que pedirle a CoinGecko para
+        // este ticker. Se reporta como fallo de ticker, no de fuente — la
+        // llamada HTTP (si hay otros ids válidos) sigue adelante normalmente.
+        else failed.push({ ticker: t, error: `CoinGecko: id desconocido para "${t}" (añádelo al mapa COIN_IDS)` })
       }
-      if (pairs.length === 0) return []
+      if (pairs.length === 0) return { quotes: [], failed }
       const ids = pairs.map(([, id]) => id).join(',')
       const url = `${BASE}/simple/price?ids=${ids}&vs_currencies=usd`
       const today = new Date().toISOString().slice(0, 10)
-      return parseSimplePrice(await fetcher(url), pairs, today)
+      const quotes = parseSimplePrice(await fetcher(url), pairs, today)
+      return { quotes, failed }
     },
     async fetchHistory(ticker) {
       const id = resolveCoinId(ticker)
