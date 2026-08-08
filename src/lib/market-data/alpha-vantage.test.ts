@@ -26,6 +26,11 @@ describe('parseAlphaDaily', () => {
 })
 
 describe('createAlphaVantageAdapter', () => {
+  it('fetchQuotes no se usa para cotización actual: devuelve el contrato vacío {quotes: [], failed: []}', async () => {
+    const a = createAlphaVantageAdapter(async () => sample, 'KEY')
+    expect(await a.fetchQuotes(['AAPL'])).toEqual({ quotes: [], failed: [] })
+  })
+
   it('sin API key, fetchHistory lanza pidiendo configurarla', async () => {
     const a = createAlphaVantageAdapter(async () => sample, undefined)
     await expect(a.fetchHistory('AAPL', '2021-06-15')).rejects.toThrow(/API key/)

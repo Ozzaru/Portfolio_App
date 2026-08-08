@@ -42,4 +42,27 @@ describe('createCoinGeckoAdapter', () => {
     expect(a.supports('crypto')).toBe(true)
     await expect(a.fetchHistory('FOOBAR', '2025-06-15')).rejects.toThrow(/CoinGecko/)
   })
+
+  it('fetchQuotes devuelve cotizaciones para los ids conocidos y reporta en `failed` los tickers sin id', async () => {
+    const a = createCoinGeckoAdapter(async () => ({ bitcoin: { usd: 60000 } }))
+    const { quotes, failed } = await a.fetchQuotes(['BTC', 'FOOBAR'])
+    expect(quotes).toEqual([{ ticker: 'BTC', price: 60000, date: expect.any(String) }])
+    expect(failed).toEqual([{ ticker: 'FOOBAR', error: expect.stringContaining('CoinGecko') }])
+  })
+
+  it('fetchQuotes: si ningún ticker tiene id, no llama a la red y todos van a `failed`', async () => {
+    const a = createCoinGeckoAdapter(async () => {
+      throw new Error('no debería llamarse')
+    })
+    const { quotes, failed } = await a.fetchQuotes(['FOOBAR'])
+    expect(quotes).toEqual([])
+    expect(failed).toEqual([{ ticker: 'FOOBAR', error: expect.stringContaining('CoinGecko') }])
+  })
+
+  it('fetchQuotes: si la llamada HTTP entera falla, propaga la excepción (fallo de fuente, no de ticker)', async () => {
+    const a = createCoinGeckoAdapter(async () => {
+      throw new Error('coingecko caído')
+    })
+    await expect(a.fetchQuotes(['BTC'])).rejects.toThrow('coingecko caído')
+  })
 })

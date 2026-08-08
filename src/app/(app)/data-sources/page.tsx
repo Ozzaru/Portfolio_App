@@ -92,7 +92,11 @@ export default function DataSourcesPage() {
           const rs = resultFor(s.id)
           const badge = rs
             ? rs.ok
-              ? { text: 'OK', cls: 'bg-green-900 text-green-300' }
+              ? rs.error
+                // Fallo parcial: la fuente respondió (ok:true) pero algún ticker
+                // concreto no trajo datos. Ni OK limpio ni ERROR total.
+                ? { text: 'PARCIAL', cls: 'bg-amber-900 text-amber-300' }
+                : { text: 'OK', cls: 'bg-green-900 text-green-300' }
               : { text: 'ERROR', cls: 'bg-red-900 text-red-300' }
             : st
               ? { text: 'OK', cls: 'bg-green-900 text-green-300' }
@@ -109,7 +113,9 @@ export default function DataSourcesPage() {
                   {st.tickerCount} tickers · última: {st.lastDate}
                 </p>
               )}
-              {rs?.error && <p className="mt-1 text-xs text-red-400">{rs.error}</p>}
+              {rs?.error && (
+                <p className={`mt-1 text-xs ${rs.ok ? 'text-amber-400' : 'text-red-400'}`}>{rs.error}</p>
+              )}
             </div>
           )
         })}

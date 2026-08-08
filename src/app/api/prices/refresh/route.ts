@@ -31,9 +31,14 @@ export async function POST() {
   // fuente y `fetchQuotes` itera en secuencia, así que un fallo del tipo de
   // cambio descartaría todas las cotizaciones de acciones ya obtenidas.
   try {
-    const fxQuotes = await adapters.yahoo.fetchQuotes([FX_TICKER])
+    const { quotes: fxQuotes, failed: fxFailed } = await adapters.yahoo.fetchQuotes([FX_TICKER])
     quotes.push(...fxQuotes)
-    results.push({ source: 'yahoo-fx', ok: true, count: fxQuotes.length })
+    results.push({
+      source: 'yahoo-fx',
+      ok: fxQuotes.length > 0,
+      count: fxQuotes.length,
+      ...(fxFailed.length > 0 ? { failed: fxFailed, error: fxFailed.map((f) => f.error).join('; ') } : {}),
+    })
   } catch (e) {
     results.push({
       source: 'yahoo-fx',

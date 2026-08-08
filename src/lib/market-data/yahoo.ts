@@ -1,4 +1,4 @@
-import type { JsonFetcher, MarketDataAdapter, PricePoint, Quote } from './types'
+import type { FailedTicker, JsonFetcher, MarketDataAdapter, PricePoint, Quote } from './types'
 import { unixToISODate } from './dates'
 
 const BASE = 'https://query1.finance.yahoo.com/v8/finance/chart'
@@ -52,12 +52,20 @@ export function createYahooAdapter(fetcher: JsonFetcher): MarketDataAdapter {
     id: 'yahoo',
     supports: (t) => t === 'stock' || t === 'etf',
     async fetchQuotes(tickers) {
-      const out: Quote[] = []
+      const quotes: Quote[] = []
+      const failed: FailedTicker[] = []
       for (const t of tickers) {
-        const { current } = await chart(t, '1d')
-        if (current) out.push({ ticker: t, price: current.price, date: current.date })
+        // Cada ticker se pide y falla de forma independiente: un 404 aislado
+        // (p. ej. falta el sufijo .SN de la Bolsa de Santiago) no debe tumbar
+        // las cotizaciones ya obtenidas de los demás tickers del lote.
+        try {
+          const { current } = await chart(t, '1d')
+          if (current) quotes.push({ ticker: t, price: current.price, date: current.date })
+        } catch (e) {
+          failed.push({ ticker: t, error: e instanceof Error ? e.message : String(e) })
+        }
       }
-      return out
+      return { quotes, failed }
     },
     async fetchHistory(ticker) {
       const { history } = await chart(ticker, '5y')
