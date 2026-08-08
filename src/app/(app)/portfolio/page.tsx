@@ -37,11 +37,24 @@ export default function PortfolioPage() {
   const [txAssetId, setTxAssetId] = useState('')
   const [commission, setCommission] = useState('')
   const [iva, setIva] = useState('')
+  const [ticker, setTicker] = useState('')
+  // Espejo de currencyRef.current.value: el campo de moneda sigue siendo no
+  // controlado (para no tocar su comportamiento), pero necesitamos su valor
+  // en cada render para decidir si mostrar el aviso de sufijo .SN.
+  const [currencyValue, setCurrencyValue] = useState('')
   const currencyRef = useRef<HTMLInputElement | null>(null)
   // true mientras el contenido de `currencyRef` fue puesto por el
   // autocompletado del ticker (no por el usuario). Necesario para poder
   // deshacer la sugerencia: ver el onChange de "ticker" más abajo.
   const autofilledRef = useRef(false)
+  // Bolsa de Santiago en Yahoo exige el sufijo .SN (ENELCHILE.SN, no
+  // ENELCHILE); sin él, la API responde 404 y el activo nunca cotiza. Es un
+  // aviso, no un bloqueo: puede haber activos en CLP fuera de la Bolsa de
+  // Santiago, o con precios cargados a mano.
+  const needsSnSuffixWarning =
+    ticker.trim() !== '' &&
+    !ticker.trim().toUpperCase().endsWith('.SN') &&
+    currencyValue.trim().toUpperCase() === 'CLP'
 
   const load = useCallback(async () => {
     const [aRes, tRes] = await Promise.all([fetch('/api/assets'), fetch('/api/transactions')])
@@ -97,7 +110,12 @@ export default function PortfolioPage() {
               assetType: fd.get('assetType'),
               currency: fd.get('currency') || 'USD',
             })
-            if (ok) form.reset()
+            if (ok) {
+              form.reset()
+              setTicker('')
+              setCurrencyValue('')
+              autofilledRef.current = false
+            }
           }}
         >
           <input
@@ -105,7 +123,9 @@ export default function PortfolioPage() {
             placeholder="Ticker (AAPL o ENELCHILE.SN)"
             required
             className={inputCls}
+            value={ticker}
             onChange={(e) => {
+              setTicker(e.target.value)
               // La Bolsa de Santiago usa el sufijo .SN en Yahoo y cotiza en pesos.
               // Sugerencia, no imposición: el campo sigue siendo editable. Pero la
               // sugerencia debe poder DESHACERSE: si el usuario escribe
@@ -119,6 +139,7 @@ export default function PortfolioPage() {
                 const isCl = e.target.value.trim().toUpperCase().endsWith('.SN')
                 el.value = isCl ? 'CLP' : ''
                 autofilledRef.current = isCl
+                setCurrencyValue(el.value)
               }
             }}
           />
@@ -136,14 +157,21 @@ export default function PortfolioPage() {
             maxLength={3}
             className={inputCls}
             ref={currencyRef}
-            onChange={() => {
+            onChange={(e) => {
               // El usuario está editando la moneda a mano: el autocompletado
               // deja de tener autoridad sobre este campo.
               autofilledRef.current = false
+              setCurrencyValue(e.target.value)
             }}
           />
           <button type="submit" className={btnCls}>Añadir activo</button>
         </form>
+        {needsSnSuffixWarning && (
+          <p className="mb-3 text-xs text-amber-400">
+            ⚠️ Los tickers de la Bolsa de Santiago necesitan el sufijo <strong>.SN</strong> en Yahoo (ej.{' '}
+            <code>ENELCHILE.SN</code>). Sin él no se podrán descargar precios.
+          </p>
+        )}
         <ul className="flex flex-wrap gap-2">
           {assets.map((a) => (
             <li
