@@ -4,8 +4,6 @@ import {
   assetInputSchema,
   transactionInputSchema,
   priceInputSchema,
-  backtestConfigSchema,
-  scenarioConfigSchema,
   alertInputSchema,
 } from '@/lib/validation/schemas'
 
@@ -100,49 +98,6 @@ describe('priceInputSchema', () => {
 
   it('rechaza precio cero o negativo', () => {
     expect(priceInputSchema.safeParse({ ticker: 'BTC', price: '0', priceDate: '2026-06-10' }).success).toBe(false)
-  })
-})
-
-describe('backtestConfigSchema', () => {
-  const base = {
-    targetWeights: { AAPL: 0.6, SPCX: 0.4 },
-    frequency: 'monthly',
-    from: '2021-06-17',
-    to: '2026-06-17',
-    initialCapital: 10000,
-  }
-  it('acepta una config válida y normaliza tickers a mayúsculas', () => {
-    const r = backtestConfigSchema.parse({ ...base, targetWeights: { aapl: 0.6, spcx: 0.4 } })
-    expect(r.targetWeights).toEqual({ AAPL: 0.6, SPCX: 0.4 })
-    expect(r.weightsFromCurrent).toBe(false)
-  })
-  it('coacciona capital string (input de formulario)', () => {
-    const r = backtestConfigSchema.parse({ ...base, initialCapital: '10000' })
-    expect(r.initialCapital).toBe(10000)
-  })
-  it('rechaza frecuencia desconocida', () => {
-    expect(backtestConfigSchema.safeParse({ ...base, frequency: 'weekly' }).success).toBe(false)
-  })
-  it('rechaza targetWeights vacío', () => {
-    expect(backtestConfigSchema.safeParse({ ...base, targetWeights: {} }).success).toBe(false)
-  })
-  it('rechaza fecha mal formada', () => {
-    expect(backtestConfigSchema.safeParse({ ...base, from: '06/2021' }).success).toBe(false)
-  })
-})
-
-describe('scenarioConfigSchema', () => {
-  it('coacciona marketShock y normaliza overrides a mayúsculas', () => {
-    const r = scenarioConfigSchema.parse({ marketShock: '-0.2', overrides: { aapl: '-0.5' } })
-    expect(r.marketShock).toBe(-0.2)
-    expect(r.overrides).toEqual({ AAPL: -0.5 })
-  })
-  it('overrides ausente → {} por defecto', () => {
-    const r = scenarioConfigSchema.parse({ marketShock: -0.1 })
-    expect(r.overrides).toEqual({})
-  })
-  it('rechaza marketShock no numérico', () => {
-    expect(scenarioConfigSchema.safeParse({ marketShock: 'abc' }).success).toBe(false)
   })
 })
 

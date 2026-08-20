@@ -1,8 +1,8 @@
 # Portfolio App
 
-App web de portafolio personal: gestión de posiciones, analítica, backtesting de estrategias, simulación de escenarios y alertas.
+App web de portafolio personal: gestión de posiciones, analítica de cartera, benchmarks y alertas.
 
-> **Estado:** MVP completo (6 fases) + **Fase 7 multi-moneda (base CLP)**. Tests, lint y build en verde. Roadmap, specs y planes de implementación en [docs/superpowers/](docs/superpowers/).
+> **Estado:** MVP completo (6 fases) + **Fase 7 multi-moneda (base CLP)**. Backtest y Escenarios **eliminados** el 2026-08-19 (ver [spec de limpieza](docs/superpowers/specs/2026-08-19-limpieza-backtest-escenarios-design.md)). Tests, lint y build en verde. Roadmap, specs y planes de implementación en [docs/superpowers/](docs/superpowers/).
 
 ## Stack
 
@@ -42,20 +42,20 @@ App web de portafolio personal: gestión de posiciones, analítica, backtesting 
 
 **Otros scripts:** `npm test` (Vitest) · `npm run lint` (ESLint) · `npm run build` (build de producción).
 
-## Arquitectura — 6 módulos
+## Arquitectura — 4 módulos
 
 | Módulo | Responsabilidad |
 |--------|-----------------|
 | Portfolio Manager | CRUD posiciones · transacciones (comisión + IVA) · snapshots · **multi-moneda base CLP** |
 | Market Data Service | Yahoo Finance · CoinGecko · Alpha Vantage · entrada manual |
 | Analytics Engine | P&L · retornos · alocación · benchmarks |
-| Backtesting Engine | estrategias · históricos · métricas (Sharpe, Drawdown) |
-| Scenario Simulator | **stress test** (shock de mercado × beta + overrides) · vs S&P estresado · what-if/rebalanceo = fast-follow |
 | Alerts System | **in-app** · precio (above/below) · % cambio del día · auto al refrescar · email/drift = fast-follow |
 
 ## Tablas (Supabase / PostgreSQL)
 
-`assets` (ticker, tipo, moneda) · `transactions` (compra/venta, precio, fecha) · `snapshots` (valor diario) · `strategies` (reglas, parámetros) · `alerts` (condición, umbral, estado)
+`assets` (ticker, tipo, moneda) · `transactions` (compra/venta, precio, fecha) · `snapshots` (valor diario) · `alerts` (condición, umbral, estado)
+
+La tabla `strategies` existe en el esquema pero **ningún código la usa** desde la limpieza del 2026-08-19. Se dejó a propósito: dropear una tabla es lo único que git no puede deshacer (Decisión 5 del spec de limpieza).
 
 Los datos de mercado se cachean en Supabase para evitar llamadas repetidas a las APIs.
 
@@ -68,8 +68,8 @@ operan en CLP.
 - **Valor de mercado** al tipo de cambio de hoy; **cost basis al tipo de cambio de la fecha de cada
   compra**, de modo que el P&L incluye el retorno cambiario real.
 - El tipo de cambio `USDCLP=X` se cachea en `price_cache` como un ticker más (CLP por 1 USD).
-- La conversión ocurre en la **frontera de datos**: los motores de analítica, backtest y escenarios
-  reciben una sola moneda y son agnósticos a ella.
+- La conversión ocurre en la **frontera de datos**: el motor de analítica recibe una sola
+  moneda y es agnóstico a ella.
 - **Calendarios:** el NAV y el Sharpe del portafolio usan la unión de días hábiles con forward-fill;
   la correlación usa intersección estricta, para que un feriado chileno no inyecte retornos 0.
 
@@ -77,25 +77,27 @@ Ver [spec de Fase 7](docs/superpowers/specs/2026-08-06-fase-7-multi-moneda-clp-d
 
 ## Páginas
 
-`/dashboard` · `/portfolio` · `/analytics` · `/backtest` · `/scenarios` · `/alerts` · `/data-sources` · `/settings`
+`/dashboard` · `/portfolio` · `/analytics` · `/alerts` · `/data-sources` · `/settings`
 
 - **Dashboard:** KPI cards (Valor Total, P&L Hoy, Retorno Total, # activos) + gráfica de rendimiento + distribución de activos + tabla de posiciones, con selector de período global (1S · 1M · 3M · 1A · Todo).
-- **Backtest y Scenarios:** páginas propias (son herramientas de análisis profundo, no widgets).
 
-## Backtesting Engine — estrategias
+## Código rescatado, todavía sin consumidor
 
-**MVP implementado (Fase 4):** enfoque **portfolio-céntrico** (estilo PORT/PRTU de Bloomberg) — el caso de uso es gestionar la cartera personal, no hacer trading de activos sueltos. Una sola estrategia:
+Dos piezas sobreviven a la limpieza porque el dashboard las va a necesitar. Ninguna se
+muestra en pantalla todavía: están exportadas, testeadas y esperando.
 
-2. **Rebalanceo Periódico** — sobre la cartera real, pesos objetivo editables (default 1/N), mensual/trimestral. Compara **rebalanceado vs buy & hold vs S&P 500**.
-
-Las demás estrategias del diseño original quedan **fuera del MVP** (son de *trader*, no de gestor de cartera): Momentum/SMA Crossover/RSI/ruptura, Buy & Hold con Stop-Loss/Take-Profit. **DCA** es un fast-follow del mismo motor de cartera. Ver [spec de Fase 4](docs/superpowers/specs/2026-06-17-fase-4-backtesting-rebalanceo-design.md).
-
-**Flujo:** Definir pesos/frecuencia/período → Ejecutar (históricos vía API, auto-backfill) → Ver Resultados.
-**Métricas:** Retorno Total · CAGR · Sharpe Ratio · Max Drawdown · vs S&P 500 (exceso geométrico) · Turnover.
+- **`src/lib/analytics/synthetic/`** — simula carteras hipotéticas sobre los mismos activos
+  (pesos fijos, con o sin rebalanceo periódico). Es el motor del benchmark **equiponderado**
+  con el que se va a comparar la cartera real. Viene de la Fase 4, cuya página de backtest
+  se eliminó.
+- **`src/lib/analytics/beta.ts`** — beta histórica contra un benchmark: cuánto amplifica la
+  cartera los movimientos del índice. Devuelve `null` en vez de inventar un valor cuando no
+  hay observaciones suficientes. Viene de la Fase 5, cuyo stress test se eliminó.
 
 ## Diseño y documentación
 
 Cada fase siguió un flujo **spec → plan de implementación → TDD**: los specs de diseño viven en
 [`docs/superpowers/specs/`](docs/superpowers/specs/) y los planes tarea-por-tarea en
 [`docs/superpowers/plans/`](docs/superpowers/plans/). Mockups del brainstorming inicial en
-[`docs/design/`](docs/design/) (`architecture.html`, `backtest-design.html`, `ui-review.html`).
+[`docs/design/`](docs/design/) (`architecture.html`, `backtest-design.html` —histórico, la
+funcionalidad se eliminó—, `ui-review.html`).

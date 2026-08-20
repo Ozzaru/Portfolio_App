@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: 'Portfolio App',
-  description: 'Gestión de portafolio personal: posiciones, analítica, backtesting, escenarios y alertas',
+  description: 'Gestión de portafolio personal: posiciones, analítica, benchmarks y alertas',
 };
 
 export default function RootLayout({

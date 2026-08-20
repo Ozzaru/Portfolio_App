@@ -10,8 +10,6 @@ const links = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/portfolio', label: 'Portafolio' },
   { href: '/analytics', label: 'Analítica' },
-  { href: '/backtest', label: 'Backtest' },
-  { href: '/scenarios', label: 'Escenarios' },
   { href: '/alerts', label: 'Alertas' },
   { href: '/data-sources', label: 'Fuentes de datos' },
   { href: '/settings', label: 'Configuración' },

@@ -38,8 +38,8 @@ export function convertSeries(
   //
   // PRECONDICIÓN: `points` debe venir ordenado ascendente por fecha (igual que
   // `fxSeries`, exigido ya por `priceAsOf`/`loadFxSeries`). Es el contrato
-  // documentado de `PriceSeriesByTicker` y lo cumplen los tres constructores
-  // reales (analytics/backtest/scenarios routes, `ORDER BY price_date asc`).
+  // documentado de `PriceSeriesByTicker` y lo cumple su constructor real
+  // (la ruta de analytics, `ORDER BY price_date asc`).
   // Si se rompe, el cursor NO retrocede y esta función da resultados
   // incorrectos en silencio — ver test "asume orden ascendente" en
   // convert.test.ts, que fija ese comportamiento a propósito.

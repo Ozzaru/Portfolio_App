@@ -1,4 +1,4 @@
-// src/lib/backtest/weights.test.ts
+// src/lib/analytics/synthetic/weights.test.ts
 import { describe, it, expect } from 'vitest'
 import { equalWeights, normalizeWeights, validateWeights } from './weights'
 
