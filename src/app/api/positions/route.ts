@@ -1,7 +1,6 @@
 // src/app/api/positions/route.ts
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { fetchAllRows } from '@/lib/supabase/paginate'
 import { computeHoldings, type Transaction } from '@/lib/portfolio/holdings'
 import { valuePositions, portfolioTotals, type NativeQuote } from '@/lib/portfolio/valuation'
 import { loadFxSeries } from '@/lib/fx/load'
@@ -19,32 +18,12 @@ export async function GET() {
     .from('transactions')
     .select('asset_id, side, quantity, price, fees, executed_at, assets(ticker, currency)')
 
-  // Paginado: sin .range() Supabase tope el resultado al "Max rows" (1000) y,
-  // con suficientes tickers/fechas, el penúltimo precio de un ticker (o incluso
-  // el último) podría quedar fuera, corrompiendo dailyPnl en silencio — la misma
-  // clase de bug que se arregló en /api/analytics y /api/prices/status (02b9828).
-  // No se usa ventana por fecha porque los precios se refrescan a demanda: el
-  // último precio de un ticker puede ser de hace semanas y se perdería. Orden
-  // total determinista (price_date desc, ticker, source) para no perder ni
-  // duplicar filas entre páginas; desc preserva "primera aparición = último".
-  type PriceCacheRow = { ticker: string; price: number; price_date: string }
+  // El FX se carga en paralelo con las transacciones: no depende de ellas. Los
+  // precios sí — hay que saber qué tickers pedir —, así que van después.
   let txRes: Awaited<typeof txPromise>
-  let priceRows: PriceCacheRow[]
   let fxSeries: Awaited<ReturnType<typeof loadFxSeries>>
   try {
-    ;[txRes, priceRows, fxSeries] = await Promise.all([
-      txPromise,
-      fetchAllRows<PriceCacheRow>((from, to) =>
-        supabase
-          .from('price_cache')
-          .select('ticker, price, price_date')
-          .order('price_date', { ascending: false })
-          .order('ticker', { ascending: true })
-          .order('source', { ascending: true })
-          .range(from, to),
-      ),
-      loadFxSeries(supabase),
-    ])
+    ;[txRes, fxSeries] = await Promise.all([txPromise, loadFxSeries(supabase)])
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'price_cache error' }, { status: 500 })
   }
@@ -66,8 +45,21 @@ export async function GET() {
   }
   /* eslint-enable @typescript-eslint/no-explicit-any */
 
-  // priceRows viene ordenado por fecha desc: primera aparición = último precio,
-  // segunda = precio anterior (para P&L del día)
+  // Solo los 2 precios más recientes de los tickers que el usuario realmente
+  // tiene: ~26 filas en 1 viaje, en vez de las ~11.800 de la tabla completa que
+  // se traían en 12 páginas secuenciales. El colapso a una fila por día y la
+  // precedencia de fuentes (gana `manual`) los resuelve la función SQL.
+  type LatestPriceRow = { ticker: string; price: number; price_date: string; source: string }
+  const userTickers = [...currencyByTicker.keys()]
+  let priceRows: LatestPriceRow[] = []
+  if (userTickers.length > 0) {
+    const { data, error } = await supabase.rpc('latest_prices', { p_tickers: userTickers })
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    priceRows = (data ?? []) as LatestPriceRow[]
+  }
+
+  // Por ticker llegan hasta 2 filas ordenadas por fecha desc: la primera es el
+  // precio actual, la segunda el cierre anterior (para el P&L del día).
   const latest = new Map<string, number>()
   const previous = new Map<string, number>()
   for (const p of priceRows) {
