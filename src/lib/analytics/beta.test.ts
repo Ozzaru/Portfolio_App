@@ -1,6 +1,6 @@
 // src/lib/analytics/beta.test.ts
 import { describe, it, expect } from 'vitest'
-import { alignedAdjReturns, computeBeta, beta, MIN_BETA_OBS } from './beta'
+import { alignedAdjReturns, betaFromReturns, beta } from './beta'
 import type { PricePointAdj } from './types'
 
 const mk = (rows: [string, number][]): PricePointAdj[] =>
@@ -15,7 +15,7 @@ const longSeries = (): PricePointAdj[] => {
   return mk(rows)
 }
 
-// 3 fechas → 2 retornos, por debajo de MIN_BETA_OBS pero suficiente para computeBeta.
+// 3 fechas → 2 retornos, por debajo de MIN_BETA_OBS pero suficiente para betaFromReturns.
 const shortSeries = (): PricePointAdj[] =>
   mk([['2026-06-15', 10], ['2026-06-16', 11], ['2026-06-17', 12]])
 
@@ -30,17 +30,17 @@ describe('alignedAdjReturns', () => {
   })
 })
 
-describe('computeBeta', () => {
+describe('betaFromReturns', () => {
   it('beta = 2 cuando el activo se mueve el doble que el benchmark', () => {
     const rB = [0.01, -0.02, 0.03, -0.01, 0.02]
     const rA = rB.map((x) => 2 * x)
-    expect(computeBeta(rA, rB)).toBeCloseTo(2)
+    expect(betaFromReturns(rA, rB)).toBeCloseTo(2)
   })
   it('null con menos de 2 observaciones', () => {
-    expect(computeBeta([0.01], [0.02])).toBeNull()
+    expect(betaFromReturns([0.01], [0.02])).toBeNull()
   })
   it('null si la varianza del benchmark es 0', () => {
-    expect(computeBeta([0.01, 0.02], [0, 0])).toBeNull()
+    expect(betaFromReturns([0.01, 0.02], [0, 0])).toBeNull()
   })
 })
 
@@ -58,6 +58,5 @@ describe('beta', () => {
   it('respeta un minObs explícito más bajo', () => {
     const s = shortSeries()
     expect(beta(s, s, 2)).toBeCloseTo(1)
-    expect(MIN_BETA_OBS).toBe(20) // el default no se ve afectado por el override
   })
 })

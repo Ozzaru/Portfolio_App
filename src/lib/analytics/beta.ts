@@ -33,7 +33,7 @@ export function alignedAdjReturns(
 
 // Beta = cov(rA,rB) / var(rB). La normalización 1/(n-1) se cancela, así que se usan sumas.
 // null si hay < 2 observaciones o var(rB) = 0. Función pura sobre arrays alineados.
-export function computeBeta(rA: number[], rB: number[]): number | null {
+export function betaFromReturns(rA: number[], rB: number[]): number | null {
   const n = Math.min(rA.length, rB.length)
   if (n < 2) return null
   const ma = mean(rA.slice(0, n))
@@ -48,10 +48,14 @@ export function computeBeta(rA: number[], rB: number[]): number | null {
   return cov / varB
 }
 
-// Beta histórica del activo vs. benchmark. Devuelve null —y la UI muestra "—"— cuando
-// no hay evidencia suficiente: por debajo de `minObs` observaciones comunes, con varianza
-// nula en el benchmark, o si el resultado no es finito. Nunca inventa un valor por
-// defecto: una beta supuesta presentada como medición engaña más que un guion.
+// Beta histórica del activo vs. benchmark. Devuelve null cuando no hay evidencia
+// suficiente —el caller debe tratarlo como dato faltante, no como cero— por debajo de
+// `minObs` observaciones comunes, con varianza nula en el benchmark, o si el resultado
+// no es finito. Esto último es alcanzable: alignedAdjReturns solo valida el precio del
+// día PREVIO (el divisor); un adjPrice NaN o Infinity del día corriente en cualquier
+// punto de la serie se propaga a través de mean/cov y produce una beta no finita que
+// varB === 0 no detecta. Nunca inventa un valor por defecto: una beta supuesta
+// presentada como medición engaña más que un dato faltante.
 //
 // `minObs` es parámetro (no constante) porque MIN_BETA_OBS asume retornos DIARIOS; sobre
 // retornos semanales o mensuales el umbral razonable es otro (§5 del spec de limpieza).
@@ -62,6 +66,6 @@ export function beta(
 ): number | null {
   const { rA, rB } = alignedAdjReturns(assetSeries, benchSeries)
   if (rA.length < minObs) return null
-  const b = computeBeta(rA, rB)
+  const b = betaFromReturns(rA, rB)
   return b !== null && Number.isFinite(b) ? b : null
 }
