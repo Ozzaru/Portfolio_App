@@ -46,7 +46,7 @@ No se toca el esquema. Ver Decisión 5.
 | `backtest/weights.ts` | `analytics/synthetic/weights.ts` | `equalWeights`, `normalizeWeights`, `validateWeights` |
 | `backtest/schedule.ts` → `rebalanceDates` | `analytics/synthetic/schedule.ts` | Calendario de rebalanceo mensual/trimestral |
 | `backtest/types.ts` → `EquityPoint`, `RebalanceFrequency` | `analytics/synthetic/types.ts` | Solo esos dos tipos; el resto se borra |
-| `scenarios/beta.ts` → `alignedAdjReturns`, `computeBeta` | `analytics/beta.ts` | Beta histórica vs. benchmark |
+| `scenarios/beta.ts` → `alignedAdjReturns`, `betaFromReturns` (renombrada desde `computeBeta`) | `analytics/beta.ts` | Beta histórica vs. benchmark |
 | 3 tests de `backtest/` (`rebalance`, `schedule`, `weights`) | `analytics/synthetic/` | Se mueven sin modificar |
 | `scenarios/beta.test.ts` | `analytics/beta.test.ts` | Podado (ver Decisión 3) |
 
@@ -125,7 +125,7 @@ cualquier cartera ponderada, con rebalanceo o sin él (`rebalanceDates = []` es 
 
 ### Decisión 3 — Podar el fallback de beta; el umbral pasa a ser parámetro
 
-De `scenarios/beta.ts` se rescatan `alignedAdjReturns` y `computeBeta`. Se **descartan**
+De `scenarios/beta.ts` se rescatan `alignedAdjReturns` y `computeBeta`, que pasa a llamarse `betaFromReturns` (ver abajo). Se **descartan**
 `resolveBeta` y `FALLBACK_BETA_BY_TYPE`.
 
 Esa tabla de betas por tipo de activo (`crypto: 1.5`, `cash: 0`, resto `1.0`) existía porque el
@@ -135,7 +135,7 @@ la etiqueta "beta" cuando nadie la midió es presentar una suposición como si f
 medición. **Si no hay datos suficientes, se muestra `—`.**
 
 Pero `MIN_BETA_OBS` (el umbral de 20) vivía **dentro** de `resolveBeta`. Borrándolo sin más,
-`computeBeta` solo protegería contra `n < 2` y devolvería betas calculadas sobre 3 observaciones
+`betaFromReturns` solo protegería contra `n < 2` y devolvería betas calculadas sobre 3 observaciones
 como si fueran fiables. Hay que reemplazar `resolveBeta` con una función que aplique el umbral:
 
 ```ts
@@ -150,7 +150,7 @@ export function beta(
 ): number | null {
   const { rA, rB } = alignedAdjReturns(assetSeries, benchSeries)
   if (rA.length < minObs) return null
-  const b = computeBeta(rA, rB)
+  const b = betaFromReturns(rA, rB)
   return b !== null && Number.isFinite(b) ? b : null
 }
 ```
@@ -158,6 +158,21 @@ export function beta(
 `minObs` queda **parametrizado** con default 20 para no atarse a un timeframe diario si en el
 futuro se quiere calcular beta sobre retornos semanales o mensuales, donde 20 observaciones
 representan un período mucho más largo y el umbral razonable sería otro.
+
+**Renombre de `computeBeta` a `betaFromReturns`** (surgido en la revisión de calidad de la
+Tarea 4). Al convivir `beta()` y `computeBeta()` en el mismo módulo, el nombre con prefijo
+verbal leía como la entrada oficial cuando la pública es `beta()`. El resto de `analytics/`
+usa nombres descriptivos sin prefijo (`timeWeightedReturn`, `absolutePnl`, `perAssetReturns`,
+`priceAsOf`). `betaFromReturns` dice qué recibe —arrays de retornos ya alineados— y se lee como
+la variante de bajo nivel de `beta()`. Solo cambia el nombre: el cuerpo sigue byte-idéntico al
+original.
+
+**Sobre la guarda `Number.isFinite` de `beta()`:** no es código defensivo muerto. `alignedAdjReturns`
+valida únicamente el precio del día **previo**, que es el divisor (`pa > 0 && pb > 0`); nunca
+valida el del día corriente. Un `NaN` o `Infinity` en cualquier `adjPrice` —dato upstream malo,
+ajuste por evento corporativo fallido— se propaga por `mean`/`cov` y produce un resultado no
+finito que el chequeo `varB === 0` no atrapa, porque `NaN !== 0`. La guarda es el único punto
+donde eso se convierte en `null`.
 
 ### Decisión 4 — `AssetType` se borra; la fuente de verdad ya vive en `schemas.ts`
 
@@ -243,7 +258,7 @@ src/lib/analytics/
 │   ├── schedule.ts         ← era backtest/schedule.ts
 │   ├── types.ts            ← EquityPoint + RebalanceFrequency
 │   └── simulate.test.ts · weights.test.ts · schedule.test.ts
-├── beta.ts                 ← alignedAdjReturns + computeBeta + beta()
+├── beta.ts                 ← alignedAdjReturns + betaFromReturns + beta()
 ├── beta.test.ts
 └── engine.ts · series.ts · returns.ts · riskMetrics.ts
     correlation.ts · perAsset.ts · dates.ts · benchmarks.ts · types.ts
