@@ -35,9 +35,22 @@
 --
 --   b) `row_number()` sobre los días ya colapsados toma los 2 más recientes.
 --
--- El desempate entre fuentes del mismo día es `source asc`, idéntico al
--- `.order('source', { ascending: true })` que usaba el código anterior. Se
--- conserva a propósito para no cambiar dos cosas a la vez.
+-- DESEMPATE ENTRE FUENTES DEL MISMO DÍA: gana `manual`, después el resto en
+-- orden alfabético. Es una regla de negocio explícita, no un accidente.
+--
+-- El código anterior usaba `.order('source', { ascending: true })` a secas, o
+-- sea alfabético puro. Con las fuentes reales del proyecto —`alpha-vantage`,
+-- `coingecko`, `manual`, `yahoo`, `yahoo-fx`— eso significaba que
+-- `alpha-vantage` y `coingecko` le ganaban a `manual`: si el usuario corregía
+-- un precio a mano, la corrección quedaba enterrada bajo el dato automático
+-- que venía a arreglar. Nadie lo decidió; salió del alfabeto.
+--
+-- Un precio `manual` existe justamente porque una persona miró el automático y
+-- lo consideró equivocado. Esa intención debe prevalecer siempre.
+--
+-- Entre las fuentes automáticas el orden alfabético se conserva: son
+-- intercambiables entre sí y lo único que importa es que el criterio sea
+-- determinista, para no devolver un precio distinto en cada consulta.
 --
 -- NOTA DE COMPORTAMIENTO: si un ticker tiene varias fuentes en un mismo día,
 -- esta función devuelve dos días distintos donde el código anterior devolvía
@@ -46,6 +59,12 @@
 --
 --   select ticker, price_date, count(*) as fuentes
 --   from price_cache group by ticker, price_date having count(*) > 1;
+--
+-- PENDIENTE (fuera del alcance de esta rama): `/api/analytics` y
+-- `src/lib/alerts/run.ts` siguen ordenando por `source asc` alfabético, así que
+-- ante fuentes múltiples en un día pueden preferir una fuente distinta a la que
+-- prefiere esta función. La precedencia de fuentes debería vivir en un solo
+-- lugar; unificarla es trabajo de una rama propia.
 --
 -- Usa el índice existente `idx_price_cache_ticker_date (ticker, price_date desc)`.
 
@@ -66,7 +85,10 @@ as $$
            pc.ticker, pc.price, pc.price_date, pc.source
     from price_cache pc
     where pc.ticker = any(p_tickers)
-    order by pc.ticker, pc.price_date desc, pc.source asc
+    order by pc.ticker,
+             pc.price_date desc,
+             case when pc.source = 'manual' then 0 else 1 end,  -- la corrección humana manda
+             pc.source asc                                      -- determinista entre automáticas
   ),
   ranked as (
     select pd.ticker, pd.price, pd.price_date, pd.source,
@@ -81,7 +103,8 @@ $$;
 
 comment on function public.latest_prices(text[]) is
   'Los 2 precios más recientes de cada ticker pedido (actual + cierre anterior), '
-  'colapsando a una fila por día. Reemplaza el scan completo de /api/positions.';
+  'colapsando a una fila por día; ante varias fuentes el mismo día gana manual. '
+  'Reemplaza el scan completo de /api/positions.';
 
 -- 2. Estado de la caché por fuente ------------------------------------------
 --
@@ -137,3 +160,7 @@ grant execute on function public.price_cache_status()  to authenticated;
 -- Y para confirmar que el índice se usa en vez de un seq scan:
 --
 --   explain analyze select * from latest_prices(array['AAPL','ENELCHILE.SN']);
+--
+-- Para comprobar la precedencia de `manual` sin tocar datos reales, sobre un
+-- ticker que tenga dos fuentes el mismo día (si el `having count(*) > 1` de
+-- arriba devolvió alguno): la fila con rn=1 de ese día debe traer source='manual'.
