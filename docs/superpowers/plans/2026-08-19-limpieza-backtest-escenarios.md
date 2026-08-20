@@ -723,12 +723,18 @@ Borrar desde el encabezado `## Backtesting Engine — estrategias` hasta la lín
 En su lugar, insertar esta sección corta (el código rescatado merece una línea, para que quien lea el repo sepa que existe y por qué):
 
 ```markdown
-## Carteras sintéticas
+## Código rescatado, todavía sin consumidor
 
-`src/lib/analytics/synthetic/` simula carteras hipotéticas sobre los mismos activos
-(pesos fijos, con o sin rebalanceo periódico). Es el motor del benchmark **equiponderado**
-que el dashboard va a comparar contra la cartera real. Sobrevive de la Fase 4, cuya página
-de backtest se eliminó.
+Dos piezas sobreviven a la limpieza porque el dashboard las va a necesitar. Ninguna se
+muestra en pantalla todavía: están exportadas, testeadas y esperando.
+
+- **`src/lib/analytics/synthetic/`** — simula carteras hipotéticas sobre los mismos activos
+  (pesos fijos, con o sin rebalanceo periódico). Es el motor del benchmark **equiponderado**
+  con el que se va a comparar la cartera real. Viene de la Fase 4, cuya página de backtest
+  se eliminó.
+- **`src/lib/analytics/beta.ts`** — beta histórica contra un benchmark: cuánto amplifica la
+  cartera los movimientos del índice. Devuelve `null` en vez de inventar un valor cuando no
+  hay observaciones suficientes. Viene de la Fase 5, cuyo stress test se eliminó.
 ```
 
 - [ ] **Step 7: Anotar el `.html` histórico**
@@ -832,7 +838,7 @@ Correr `npm test` después de este paso: **27 archivos, 181 tests, verdes.** Son
 Run: `grep -n -i "backtest\|escenario\|scenario" README.md`
 Expected: solo 3 tipos de mención sobreviven, todas correctas:
 - la línea de Estado, que dice que fueron eliminados
-- la sección "Carteras sintéticas", que menciona la Fase 4 como origen histórico
+- la sección "Código rescatado, todavía sin consumidor", que menciona las Fases 4 y 5 como origen histórico
 - la línea de `docs/design/`, con `backtest-design.html` marcado como histórico
 
 Cualquier otra mención es una que se escapó.
