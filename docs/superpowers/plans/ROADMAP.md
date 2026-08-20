@@ -22,12 +22,12 @@ Cada fase produce software funcional y testeable por sí misma. Una fase = un pl
 Cada proyecto lleva su propio spec y plan, igual que las fases.
 
 | # | Proyecto | Alcance | Estado |
-|---|---|---|---|
+|------|----------|---------|--------|
 | 1 | [Limpieza](2026-08-19-limpieza-backtest-escenarios.md) ([spec](../specs/2026-08-19-limpieza-backtest-escenarios-design.md)) | Eliminar Backtest y Escenarios; rescatar el simulador de carteras y el cálculo de beta hacia `analytics/` | **Implementada** |
-| 2 | Performance | Filtrar `price_cache` por ticker en `/api/positions`, Server Components, caché entre navegaciones | Pendiente |
-| 3 | Portafolios CLP / USD | Separar la medición por moneda en vez de consolidar todo en CLP | Pendiente |
-| 4 | Dashboard: multi-benchmark | Selector de benchmark en el dashboard, comparación simultánea (S&P 500, Nasdaq 100, buy & hold, equiponderado), fechas en dd/mm/aaaa | Pendiente |
-| 5 | Deploy web + responsive | Publicar la app con acceso desde celular y PC; layout adaptable | Pendiente |
-| 6 | Configuración + alertas automáticas | Poblar `/settings`; evaluación de alertas por cron sin intervención manual | Pendiente |
+| 2 | Performance | Filtrar `price_cache` por ticker en `/api/positions`, Server Components, caché entre navegaciones | **Pendiente** |
+| 3 | Portafolios CLP / USD | Separar la medición por moneda en vez de consolidar todo en CLP | **Pendiente** |
+| 4 | Dashboard: multi-benchmark | Selector de benchmark en el dashboard, comparación simultánea (S&P 500, Nasdaq 100, buy & hold, equiponderado), fechas en dd/mm/aaaa | **Pendiente** |
+| 5 | Deploy web + responsive | Publicar la app con acceso desde celular y PC; layout adaptable | **Pendiente** |
+| 6 | Configuración + alertas automáticas | Poblar `/settings`; evaluación de alertas por cron sin intervención manual | **Pendiente** |
 
 **Dependencias:** 4 depende de 1 (usa `analytics/synthetic/` y `analytics/beta.ts`) y de 3 (el benchmark se elige por portafolio) · 6 depende de 5 (el cron necesita un endpoint público al que pegarle).
