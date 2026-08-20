@@ -76,14 +76,23 @@ borran en el mismo commit.
 
 ### Decisión 1 — Rescatar el núcleo de simulación en vez de borrarlo
 
-`simulateLine` es, sin modificar una línea, el motor de los dos benchmarks que el Proyecto 4
-necesita:
+`simulateLine` es, sin modificar una línea, el motor del benchmark **equiponderado** que el
+Proyecto 4 necesita:
 
-- **Buy & Hold** = `simulateLine(dates, prices, weights, [], capital)` — lista de rebalanceo vacía.
-- **Equiponderado** = `simulateLine(dates, prices, equalWeights(tickers), rebalanceDates(...), capital)`.
+```ts
+simulateLine(dates, prices, equalWeights(tickers), rebalanceDates(dates, 'quarterly'), capital)
+```
 
-Son ~110 líneas ya testeadas. Borrarlas para reescribirlas en dos proyectos más sería churn,
-no YAGNI: el requerimiento de tenerlas ya está confirmado, no es especulación.
+Su contrato —pesos objetivo fijos, reanclaje del capital en cada fecha de rebalanceo, y
+`turnoverTotal` acumulado— es exactamente lo que hace falta, incluida la métrica de turnover
+que permite juzgar cuánto trading asumió la línea.
+
+**No** sirve para el buy & hold definido en §9.2: `simulateLine` asigna todo el capital en
+`dates[0]`, que es precisamente la variante descartada. Ese benchmark sale de primitivas que ya
+viven en `analytics/series.ts` y no requiere rescatar nada (ver §9.2).
+
+Son ~110 líneas ya testeadas. Borrarlas para reescribir el equiponderado en dos proyectos más
+sería churn, no YAGNI: el requerimiento ya está confirmado, no es especulación.
 
 La alternativa de dejar `src/lib/backtest/` intacto y borrar solo la página se descartó porque
 el objetivo incluye que "backtest" **desaparezca como concepto**; una librería muerta con ese
@@ -258,21 +267,72 @@ cualquier pieza sea independiente.
 
 ## 9. Qué hereda el Proyecto 4
 
-Cabos sueltos identificados que **no** se resuelven acá y que el spec del Proyecto 4 debe tomar:
+Definiciones **ya decididas** por el usuario (2026-08-19) que el Proyecto 4 hereda, más los
+cabos sueltos que ese spec debe resolver.
 
-1. **`simulateLine` lanza si un ticker no tiene precio en la fecha ancla** (`adjAt` tira
-   `Error`). Para un benchmark sintético sobre la cartera real, un activo comprado a mitad del
-   período rompería el cálculo. El motor de backtest lo resolvía recortando el inicio al primer
-   día con cobertura de todos los activos (`engine.ts:36-46`, `effectiveFrom`). Hay que decidir
-   la misma política.
-2. **Definición de "Buy & Hold"** — comprar todo el día 1, o replicar las compras reales sin
-   ventas, o los mismos aportes puestos en un índice. Son tres preguntas distintas.
-3. **Definición de "Equiponderado"** — 1/N fijo sin rebalancear, o 1/N rebalanceado
-   (mensual/trimestral, vía `rebalanceDates`).
-4. **`simulateLine` devuelve una curva en valores absolutos**, mientras que
+### 9.1 Decidido — Equiponderado: 1/N rebalanceado trimestral
+
+Se descarta 1/N fijo sin rebalanceo. Razones:
+
+- **Sin rebalanceo deja de ser equiponderado.** Tras la deriva de precios la línea es
+  "equiponderado en t0", una asignación arbitraria más; el nombre deja de describirla.
+- **Complementa al buy & hold en vez de duplicarlo.** El B&H de §9.2 ya es una línea pasiva;
+  una segunda línea pasiva se movería igual y el gráfico cargaría información redundante. El
+  rebalanceo periódico es sistemáticamente contrario (recorta ganadores, refuerza perdedores):
+  un comportamiento genuinamente distinto.
+- **Aísla el dimensionamiento de posiciones**, que es una decisión real del usuario: "¿sobre-
+  ponderar ciertos activos agregó valor frente a repartir parejo y rebalancear?"
+- **Trimestral, no mensual:** 12 rebalanceos al año no son ejecutables en una cartera personal
+  e inflan el turnover. `rebalanceDates` soporta ambos; cambiarlo es un parámetro.
+
+**Advertencia a documentar en la UI:** `simulateLine` rebalancea **sin costos** — no modela
+comisión ni IVA, que la cartera real sí paga (columnas `commission` / `iva` de `transactions`).
+La línea equiponderada queda ligeramente favorecida. Mostrar `turnoverTotal` junto a ella para
+que el sesgo sea visible y cuantificable.
+
+### 9.2 Decidido — Buy & Hold: compras reales, sin ventas
+
+"Comprar y mantener", **no** invertir todo el día 1. Responde "¿cuánto valdría la cartera si
+nunca hubiera vendido nada?", aislando una única decisión: *cuándo vender*.
+
+**No usa `simulateLine`** (que asigna todo en `dates[0]`, la variante descartada). Sale de
+primitivas ya existentes y testeadas en `analytics/series.ts`:
+
+```ts
+portfolioRawValue(holdingsAsOf(txs.filter(t => t.side === 'buy'), date), prices, date)
+```
+
+`holdingsAsOf` recorta por fecha y `computeHoldings` acumula; pasándole solo las compras, las
+ventas nunca ocurren. Son ~5 líneas — **no hay nada que rescatar para este benchmark**.
+
+**Cabo suelto:** al eliminar las ventas se ignora que su producto pudo haber financiado compras
+posteriores. En rigor, esa variante "gasta" dinero que no se tenía. El Proyecto 4 debe decidir
+si lo asume como simplificación documentada o si modela el efectivo.
+
+### 9.3 Pendiente — Universo del equiponderado y sesgo de retrospectiva
+
+Si el equiponderado arranca repartiendo entre **todos** los activos que el usuario llegó a
+tener, se le otorga conocimiento que no tenía (un activo comprado en el año 3). El universo
+debe ser el que se tenía **en cada fecha**, re-equiponderando cuando cambia — y ese cambio de
+universo es en sí mismo un evento de rebalanceo que interactúa con la frecuencia trimestral.
+
+Es el mismo problema que el spec de la Fase 4 marcaba con `HINDSIGHT_WARNING`. El Proyecto 4
+debe resolver la mecánica.
+
+### 9.4 Pendiente — Cobertura de precios en la fecha ancla
+
+**`simulateLine` lanza si un ticker no tiene precio en la fecha ancla** (`adjAt` tira `Error`).
+Un activo comprado a mitad del período rompería el cálculo. El motor de backtest lo resolvía
+recortando el inicio al primer día con cobertura de todos los activos (`engine.ts:36-46`,
+`effectiveFrom`). Interactúa directamente con §9.3: si el universo es dinámico, quizá no haga
+falta recortar. Hay que decidir la política.
+
+### 9.5 Pendiente — Otros
+
+1. **`simulateLine` devuelve una curva en valores absolutos**, mientras que
    `AnalyticsResult.series` guarda valores normalizados. La conversión es
    `analytics/returns.normalizeToBase`, que ya existe.
-5. **`alignedAdjReturns` probablemente se solapa con `analytics/correlation.ts`** — ambas
+2. **`alignedAdjReturns` probablemente se solapa con `analytics/correlation.ts`** — ambas
    alinean series por intersección estricta. Evaluar si se unifican al integrar la beta.
 
 ## 10. Orden del ciclo
