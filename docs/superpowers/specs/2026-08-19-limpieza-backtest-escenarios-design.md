@@ -272,7 +272,7 @@ src/lib/analytics/
 |---|---|
 | `npm test` | **27 archivos**, **181 tests**, todos verdes |
 | `npm run lint` | limpio |
-| `npm run build` | verde — es lo que caza cualquier import colgante |
+| `npm run build` | verde, y su tabla de rutas sin /backtest ni /scenarios — es la fuente de verdad y lo que caza cualquier import colgante |
 | `grep -rn "lib/backtest" src` y `grep -rn "lib/scenarios" src` | sin resultados |
 | `grep -rn "AssetType" src` | sin resultados |
 | Navegación manual | sidebar con 6 links; dashboard, portafolio, analítica y alertas idénticos |

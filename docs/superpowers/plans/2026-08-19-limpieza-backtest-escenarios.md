@@ -883,23 +883,13 @@ grep -rn "AssetType" src
 
 Expected: los tres sin resultados.
 
-- [ ] **Step 4: Verificación manual en el navegador**
+- [ ] **Step 4: Confirmar que las rutas desaparecieron**
 
-Run: `npm run dev`
+**La fuente de verdad es la tabla de rutas del build** (Step 2), no un sondeo HTTP. Verificar que no aparecen `/backtest`, `/scenarios`, `/api/backtest` ni `/api/scenarios`.
 
-Recorrer y confirmar que **nada cambió** en lo que sí se usa:
+**Por qué no sirve sondear con `curl`:** el middleware de auth (`src/proxy.ts`) tiene un matcher que intercepta toda ruta no estática y redirige a `/login` con **307 antes** de que Next resuelva si la ruta existe. Una ruta borrada y una ruta protegida devuelven exactamente lo mismo sin sesión. Este plan pedía originalmente un 404 y eso era un supuesto falso; se descubrió al ejecutar la Tarea 6.
 
-| Página | Qué confirmar |
-|---|---|
-| `/dashboard` | KPI cards con valores, distribución de activos, tabla de posiciones y gráfica de rendimiento — todo igual que antes |
-| `/portfolio` | Lista de activos y transacciones intacta |
-| `/analytics` | Métricas (TWR, volatilidad, Sharpe, drawdown), gráfica, matriz de correlación y selector de benchmark funcionando |
-| `/alerts` | Alertas listadas, badge del sidebar correcto |
-| `/data-sources` | Estado de fuentes OK/ERROR |
-| Sidebar | Exactamente 6 links, sin Backtest ni Escenarios |
-| `/backtest` y `/scenarios` | Deben dar **404** |
-
-Detener el server con Ctrl+C.
+Verificación manual opcional, con sesión iniciada (`npm run dev` y navegar): confirmar que **nada cambió** en lo que sí se usa —dashboard con sus KPI cards, distribución y gráfica de rendimiento; portafolio con activos y transacciones; analítica con TWR, volatilidad, Sharpe, drawdown, correlación y selector de benchmark; alertas con su badge; fuentes de datos con su estado OK/ERROR— y que el sidebar tiene exactamente 6 links. Detener el server con Ctrl+C.
 
 - [ ] **Step 5: Revisar el diff completo de la rama**
 
