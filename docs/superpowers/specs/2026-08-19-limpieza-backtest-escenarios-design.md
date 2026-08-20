@@ -62,6 +62,7 @@ No se toca el esquema. Ver Decisión 5.
 | `src/lib/backtest/metrics.ts` + test | `cagr`, `totalReturn`, `geometricExcess`, `lineMetrics`. Wrappers finos sobre `analytics/riskMetrics`; el Proyecto 4 normaliza con `analytics/returns.normalizeToBase` y no los necesita |
 | `src/lib/scenarios/engine.ts`, `stress.ts`, `types.ts` + tests | El stress test es lo que efectivamente no se usa |
 | `sidebar.tsx` líneas 13-14 | Los 2 links del nav |
+| `backtestConfigSchema` y `scenarioConfigSchema` (+ sus tipos y tests) en `validation/schemas.ts` | Validaban el body de las dos rutas API borradas. Sin ellas quedan sin ningún consumidor de producción — código muerto, no diferido. Detectados en la revisión de la Tarea 2; ver §2.4 |
 
 ### 2.3 El grafo de dependencias permite el borrado
 
@@ -71,6 +72,24 @@ borrarlos no puede afectar dashboard, portafolio, analítica ni alertas.
 
 Los únicos consumidores externos de ambos módulos son sus propias páginas y rutas API, que se
 borran en el mismo commit.
+
+### 2.4 Schemas de validación huérfanos
+
+`validation/schemas.ts` exporta 6 schemas de Zod. Dos de ellos —`backtestConfigSchema` y
+`scenarioConfigSchema`— existían **solo** para validar el body de los POST a `/api/backtest` y
+`/api/scenarios`. Al borrar esas rutas quedan sin ningún consumidor de producción: su única
+referencia restante es su propio archivo de test, que los ejercita en el vacío.
+
+Se borran junto con sus tipos inferidos (`BacktestConfigInput`, `ScenarioConfigInput`) y sus
+bloques `describe` (5 y 3 casos respectivamente). El archivo `schemas.test.ts` sobrevive.
+
+Los otros cuatro —`assetInputSchema`, `transactionInputSchema`, `priceInputSchema`,
+`alertInputSchema`— tienen rutas API vivas (`/api/assets`, `/api/transactions`, `/api/prices`,
+`/api/alerts`) y **no se tocan**.
+
+Esto no se detectó al escribir el spec: se encontró en la revisión de calidad de la Tarea 2,
+que rastreó qué quedaba importando lo borrado. Es exactamente el tipo de residuo que el grafo
+de dependencias de §2.3 no muestra, porque el acoplamiento iba de la ruta al schema, no al revés.
 
 ## 3. Decisiones de diseño
 
@@ -236,7 +255,7 @@ src/lib/analytics/
 
 | Chequeo | Resultado esperado |
 |---|---|
-| `npm test` | **27 archivos**, **186 + N tests**, todos verdes |
+| `npm test` | **27 archivos**, **181 tests**, todos verdes |
 | `npm run lint` | limpio |
 | `npm run build` | verde — es lo que caza cualquier import colgante |
 | `grep -rn "lib/backtest" src` y `grep -rn "lib/scenarios" src` | sin resultados |
@@ -245,14 +264,19 @@ src/lib/analytics/
 
 **Aritmética de la línea base** (31 archivos / 212 tests, medida el 2026-08-19):
 
-- −4 archivos de test borrados: `backtest/engine` (9), `backtest/metrics` (7),
-  `scenarios/engine` (4), `scenarios/stress` (3) = **−23 tests** → 27 archivos, 189 tests.
-- `beta.test.ts` pierde 3 casos (2 de `resolveBeta`, 1 de `FALLBACK_BETA_BY_TYPE`) → **186**.
-- `beta.test.ts` gana **N ≥ 3** casos nuevos para `beta()`: devuelve `null` bajo el umbral,
-  devuelve el valor sobre el umbral, y respeta un `minObs` explícito.
-- Los 3 tests de `synthetic/` se mueven sin cambiar de contenido: no alteran el conteo.
+| Paso | Δ archivos | Δ tests | Acumulado |
+|---|---|---|---|
+| Línea base | — | — | 31 / 212 |
+| Borrar `backtest/engine.test` (9) y `backtest/metrics.test` (7) | −2 | −16 | 29 / 196 |
+| Borrar el bloque de `backtestConfigSchema` en `schemas.test` | 0 | −5 | 29 / 191 |
+| Borrar `scenarios/engine.test` (4) y `scenarios/stress.test` (3) | −2 | −7 | 27 / 184 |
+| Borrar el bloque de `scenarioConfigSchema` en `schemas.test` | 0 | −3 | 27 / 181 |
+| `beta.test.ts`: −3 casos podados, +3 casos de `beta()` | 0 | 0 | **27 / 181** |
 
-Si el suite termina en menos de 186 tests o en otro número de archivos, algo se movió mal.
+Los 3 tests de `synthetic/` se mueven sin cambiar de contenido: no alteran el conteo.
+`schemas.test.ts` sobrevive como archivo, solo pierde dos bloques `describe`.
+
+Si el suite no termina exactamente en 27 archivos y 181 tests, algo se movió mal.
 
 ## 8. Riesgos
 

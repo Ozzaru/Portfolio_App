@@ -299,18 +299,50 @@ git rm -r src/lib/backtest
 
 Esto se lleva `engine.ts` (+9 tests), `metrics.ts` (+7 tests) y el `types.ts` original.
 
-- [ ] **Step 7: Verificar que no quedan referencias**
+- [ ] **Step 7: Borrar `backtestConfigSchema`, que quedó huérfano**
+
+Detectado en la revisión de la Tarea 2. `backtestConfigSchema` validaba el body del POST a `/api/backtest`, ruta que la Tarea 2 borró. Su único consumidor que queda es su propio test. Es código muerto de verdad, no diferido.
+
+En `src/lib/validation/schemas.ts`, borrar el bloque completo de las líneas 51-66:
+
+```ts
+export const backtestConfigSchema = z.object({
+  targetWeights: z
+    .record(z.string(), z.coerce.number())
+    .refine((w) => Object.keys(w).length > 0, 'targetWeights no puede estar vacío')
+    .transform((w) => {
+      const out: Record<string, number> = {}
+      for (const [t, v] of Object.entries(w)) out[t.trim().toUpperCase()] = v
+      return out
+    }),
+  frequency: z.enum(['monthly', 'quarterly']),
+  from: z.string().regex(DATE_RE, 'formato esperado YYYY-MM-DD'),
+  to: z.string().regex(DATE_RE, 'formato esperado YYYY-MM-DD'),
+  initialCapital: z.coerce.number().positive(),
+  weightsFromCurrent: z.coerce.boolean().default(false),
+})
+export type BacktestConfigInput = z.infer<typeof backtestConfigSchema>
+```
+
+En `src/lib/validation/schemas.test.ts`, quitar `backtestConfigSchema,` de la lista de imports (líneas 3-10) y borrar su bloque `describe` completo — el que empieza en `describe('backtestConfigSchema', () => {` y contiene 5 casos (`acepta una config válida…`, `coacciona capital string…`, `rechaza frecuencia desconocida`, `rechaza targetWeights vacío`, `rechaza fecha mal formada`).
+
+**No tocar** `scenarioConfigSchema`: también quedó huérfano, pero se borra en la Tarea 4 junto con el resto de scenarios. **No tocar** `assetInputSchema`, `transactionInputSchema`, `priceInputSchema` ni `alertInputSchema` — los cuatro tienen rutas API vivas que los usan.
+
+- [ ] **Step 8: Verificar que no quedan referencias**
 
 Run: `grep -rn "lib/backtest" src`
 Expected: sin resultados.
 
-- [ ] **Step 8: Correr los tests**
+Run: `grep -rn "backtestConfigSchema\|BacktestConfigInput" src`
+Expected: sin resultados.
+
+- [ ] **Step 9: Correr los tests**
 
 Run: `npm test`
-Expected: **29 archivos, 196 tests, verdes.**
-Aritmética: 31 − 2 archivos borrados (`engine.test.ts`, `metrics.test.ts`) = 29. 212 − 9 − 7 = 196. Los 3 tests movidos no alteran el conteo.
+Expected: **29 archivos, 191 tests, verdes.**
+Aritmética: 31 − 2 archivos borrados (`engine.test.ts`, `metrics.test.ts`) = 29 archivos. 212 − 9 (`engine.test`) − 7 (`metrics.test`) − 5 (`backtestConfigSchema`) = 191. Los 3 tests movidos a `synthetic/` no alteran el conteo; `schemas.test.ts` sigue existiendo como archivo, solo pierde un bloque.
 
-- [ ] **Step 9: Correr lint y build**
+- [ ] **Step 10: Correr lint y build**
 
 Run: `npm run lint`
 Expected: limpio.
@@ -318,7 +350,7 @@ Expected: limpio.
 Run: `npm run build`
 Expected: build exitoso.
 
-- [ ] **Step 12: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
 git add -A
@@ -506,7 +538,32 @@ git rm -r src/lib/scenarios
 
 Esto se lleva `beta.ts` y `beta.test.ts` originales (ya reemplazados), `engine.ts` (+4 tests), `stress.ts` (+3 tests) y `types.ts` — que es donde vivía `AssetType`.
 
-- [ ] **Step 7: Verificar que `AssetType` y `lib/scenarios` desaparecieron**
+- [ ] **Step 7: Borrar `scenarioConfigSchema`, que quedó huérfano**
+
+Detectado en la revisión de la Tarea 2, gemelo del `backtestConfigSchema` que ya se borró en la Tarea 3. `scenarioConfigSchema` validaba el body del POST a `/api/scenarios`, ruta que la Tarea 1 borró. Su único consumidor que queda es su propio test.
+
+En `src/lib/validation/schemas.ts`, borrar el bloque completo:
+
+```ts
+export const scenarioConfigSchema = z.object({
+  marketShock: z.coerce.number(),
+  overrides: z
+    .record(z.string(), z.coerce.number())
+    .default({})
+    .transform((o) => {
+      const out: Record<string, number> = {}
+      for (const [t, v] of Object.entries(o)) out[t.trim().toUpperCase()] = v
+      return out
+    }),
+})
+export type ScenarioConfigInput = z.infer<typeof scenarioConfigSchema>
+```
+
+En `src/lib/validation/schemas.test.ts`, quitar `scenarioConfigSchema,` de la lista de imports y borrar su bloque `describe` completo — el que empieza en `describe('scenarioConfigSchema', () => {` y contiene 3 casos (`coacciona marketShock y normaliza overrides a mayúsculas`, `overrides ausente → {} por defecto`, `rechaza marketShock no numérico`).
+
+Tras este paso, `schemas.ts` debe exportar exactamente 4 schemas: `assetInputSchema`, `transactionInputSchema`, `priceInputSchema` y `alertInputSchema`. **Los cuatro tienen rutas API vivas que los usan** (`/api/assets`, `/api/transactions`, `/api/prices`, `/api/alerts`) — no tocarlos.
+
+- [ ] **Step 8: Verificar que `AssetType` y `lib/scenarios` desaparecieron**
 
 Run: `grep -rn "lib/scenarios" src`
 Expected: sin resultados.
@@ -517,15 +574,18 @@ Expected: sin resultados.
 Este segundo grep es el chequeo que confirma la Decisión 4 del spec: `AssetType` solo vivía dentro de lo que se borró, y el enum canónico sigue intacto en `src/lib/validation/schemas.ts:14` (`z.enum([...])`), que es el que valida el POST de activos.
 
 Run: `grep -n "z.enum" src/lib/validation/schemas.ts`
-Expected: la línea 14 con `assetType: z.enum(['stock', 'etf', 'crypto', 'cash', 'other']),` sigue presente.
+Expected: la línea con `assetType: z.enum(['stock', 'etf', 'crypto', 'cash', 'other']),` sigue presente. (El número de línea habrá bajado tras borrar los dos schemas huérfanos — lo que importa es que la línea exista.)
 
-- [ ] **Step 8: Correr la suite completa**
+Run: `grep -rn "scenarioConfigSchema\|ScenarioConfigInput" src`
+Expected: sin resultados.
+
+- [ ] **Step 9: Correr la suite completa**
 
 Run: `npm test`
-Expected: **27 archivos, 189 tests, verdes.**
-Aritmética: 29 − 2 archivos borrados (`scenarios/engine.test.ts`, `scenarios/stress.test.ts`) = 27. 196 − 4 − 3 = 189. `beta.test.ts` no altera el conteo: perdió 3 casos (2 de `resolveBeta`, 1 de `FALLBACK_BETA_BY_TYPE`) y ganó 3 de `beta()`.
+Expected: **27 archivos, 181 tests, verdes.**
+Aritmética: 29 − 2 archivos borrados (`scenarios/engine.test.ts`, `scenarios/stress.test.ts`) = 27 archivos. 191 − 4 (`engine.test`) − 3 (`stress.test`) − 3 (`scenarioConfigSchema`) = 181. `beta.test.ts` no altera el conteo: perdió 3 casos (2 de `resolveBeta`, 1 de `FALLBACK_BETA_BY_TYPE`) y ganó 3 de `beta()`.
 
-- [ ] **Step 9: Correr lint y build**
+- [ ] **Step 10: Correr lint y build**
 
 Run: `npm run lint`
 Expected: limpio.
@@ -533,7 +593,7 @@ Expected: limpio.
 Run: `npm run build`
 Expected: build exitoso.
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
 git add -A
@@ -761,7 +821,7 @@ por:
     // `ORDER BY price_date ascending`, y `priceAsOf`/`loadFxSeries`
 ```
 
-Correr `npm test` después de este paso: **27 archivos, 189 tests, verdes.** Son cambios de comentario, no de comportamiento — si algún test cambia de resultado, se editó código por error.
+Correr `npm test` después de este paso: **27 archivos, 181 tests, verdes.** Son cambios de comentario, no de comportamiento — si algún test cambia de resultado, se editó código por error.
 
 - [ ] **Step 11: Verificar que el README no menciona funcionalidad muerta**
 
@@ -791,9 +851,9 @@ Todos los chequeos de la §7 del spec, corridos juntos sobre el estado final.
 - [ ] **Step 1: Suite completa**
 
 Run: `npm test`
-Expected: **27 archivos, 189 tests, verdes.**
+Expected: **27 archivos, 181 tests, verdes.**
 
-Si el número de tests es menor a 186 o el de archivos no es 27, revisar contra la aritmética de la §7 del spec antes de continuar.
+Si el número de tests no es 181 o el de archivos no es 27, revisar contra la aritmética de la §7 del spec antes de continuar.
 
 - [ ] **Step 2: Lint y build**
 
