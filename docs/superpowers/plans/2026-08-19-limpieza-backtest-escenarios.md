@@ -497,7 +497,11 @@ describe('beta', () => {
 - [ ] **Step 3: Correr los tests nuevos para verificar que FALLAN**
 
 Run: `npx vitest run src/lib/analytics/beta.test.ts`
-Expected: **FAIL.** El error es de TypeScript/import: `beta` no está exportado por `./beta`. Los 4 tests de `alignedAdjReturns` y `computeBeta` no llegan a correr porque el import falla primero.
+Expected: **FAIL — 3 fallidos, 4 pasados (7).** Los 3 casos de `describe('beta')` fallan con `TypeError: beta is not a function`.
+
+Ojo con la forma del fallo: Vitest transforma con esbuild y **no hace type-check**, así que el import no resuelto no explota en compilación — `beta` llega como `undefined` y revienta recién al invocarse. Por eso los 4 tests de `alignedAdjReturns` y `computeBeta` **sí corren y pasan**. Es el fallo correcto: la función no existe todavía.
+
+Si este paso PASA los 7, algo está mal.
 
 Si este paso PASA, algo está mal: significa que `beta()` ya existe y no se está probando lo que se cree.
 
