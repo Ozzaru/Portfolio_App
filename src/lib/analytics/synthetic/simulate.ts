@@ -1,6 +1,6 @@
-// src/lib/backtest/rebalance.ts
-import { priceAsOf } from '@/lib/analytics/series'
-import type { PriceSeriesByTicker } from '@/lib/analytics/types'
+// src/lib/analytics/synthetic/simulate.ts
+import { priceAsOf } from '../series'
+import type { PriceSeriesByTicker } from '../types'
 import type { EquityPoint } from './types'
 
 // Cierre ajustado as-of fecha (forward-fill). Lanza si no hay precio ≤ fecha.

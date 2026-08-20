@@ -1,4 +1,4 @@
-// src/lib/backtest/schedule.test.ts
+// src/lib/analytics/synthetic/schedule.test.ts
 import { describe, it, expect } from 'vitest'
 import { rebalanceDates } from './schedule'
 

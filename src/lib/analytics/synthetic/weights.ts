@@ -1,6 +1,6 @@
-// src/lib/backtest/weights.ts
-// Pesos objetivo del backtest. El default 1/N evita el sesgo de retrospectiva
-// (ver Decisión 1b del spec); "Mis pesos actuales" se calcula en la UI.
+// src/lib/analytics/synthetic/weights.ts
+// Pesos objetivo de una cartera sintética. `equalWeights` es la base del
+// benchmark equiponderado (ver §9.1 del spec de limpieza).
 
 export function equalWeights(tickers: string[]): Record<string, number> {
   const out: Record<string, number> = {}

@@ -1,7 +1,7 @@
-// src/lib/backtest/rebalance.test.ts
+// src/lib/analytics/synthetic/simulate.test.ts
 import { describe, it, expect } from 'vitest'
-import { simulateLine } from './rebalance'
-import type { PriceSeriesByTicker } from '@/lib/analytics/types'
+import { simulateLine } from './simulate'
+import type { PriceSeriesByTicker } from '../types'
 
 // A se duplica en d1 y vuelve a 100 en d2; B plano. Precio raw = ajustado en el test.
 function series(): PriceSeriesByTicker {

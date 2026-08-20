@@ -1,4 +1,4 @@
-// src/lib/backtest/schedule.ts
+// src/lib/analytics/synthetic/schedule.ts
 import type { RebalanceFrequency } from './types'
 
 // Fechas de rebalanceo = primer día operativo de cada mes nuevo posterior a t0
