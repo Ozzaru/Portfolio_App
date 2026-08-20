@@ -48,19 +48,6 @@ export const priceInputSchema = z.object({
 })
 export type PriceInput = z.infer<typeof priceInputSchema>
 
-export const scenarioConfigSchema = z.object({
-  marketShock: z.coerce.number(),
-  overrides: z
-    .record(z.string(), z.coerce.number())
-    .default({})
-    .transform((o) => {
-      const out: Record<string, number> = {}
-      for (const [t, v] of Object.entries(o)) out[t.trim().toUpperCase()] = v
-      return out
-    }),
-})
-export type ScenarioConfigInput = z.infer<typeof scenarioConfigSchema>
-
 export const alertInputSchema = z.object({
   alertType: z.enum(['price_above', 'price_below', 'pct_change']),
   assetId: z.string().uuid(),

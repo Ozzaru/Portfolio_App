@@ -1,20 +1,10 @@
-// src/lib/scenarios/beta.ts
-import type { PricePointAdj } from '@/lib/analytics/types'
-import { mean } from '@/lib/analytics/riskMetrics'
-import type { AssetType } from './types'
+// src/lib/analytics/beta.ts
+import type { PricePointAdj } from './types'
+import { mean } from './riskMetrics'
 
 // Mínimo de observaciones diarias comunes para fiarse de la beta histórica.
+// ~1 mes operativo. Ver §5 del spec de limpieza para la semántica exacta.
 export const MIN_BETA_OBS = 20
-
-// Beta de fallback por tipo de activo (Decisión 3 del spec). cash no co-mueve con el
-// mercado; crypto es alta beta sistémica (heurística tuneable); equity-ish = neutral.
-export const FALLBACK_BETA_BY_TYPE: Record<AssetType, number> = {
-  stock: 1.0,
-  etf: 1.0,
-  other: 1.0,
-  crypto: 1.5,
-  cash: 0.0,
-}
 
 // Retornos diarios de cierre AJUSTADO sobre las fechas comunes (consecutivas) de ambas series.
 export function alignedAdjReturns(
@@ -58,17 +48,20 @@ export function computeBeta(rA: number[], rB: number[]): number | null {
   return cov / varB
 }
 
-// Beta efectiva del activo: histórica si hay >= MIN_BETA_OBS obs comunes y es finita;
-// si no, fallback por asset_type (Decisión 3).
-export function resolveBeta(
+// Beta histórica del activo vs. benchmark. Devuelve null —y la UI muestra "—"— cuando
+// no hay evidencia suficiente: por debajo de `minObs` observaciones comunes, con varianza
+// nula en el benchmark, o si el resultado no es finito. Nunca inventa un valor por
+// defecto: una beta supuesta presentada como medición engaña más que un guion.
+//
+// `minObs` es parámetro (no constante) porque MIN_BETA_OBS asume retornos DIARIOS; sobre
+// retornos semanales o mensuales el umbral razonable es otro (§5 del spec de limpieza).
+export function beta(
   assetSeries: PricePointAdj[],
   benchSeries: PricePointAdj[],
-  assetType: AssetType
-): { beta: number; fallback: boolean } {
+  minObs: number = MIN_BETA_OBS
+): number | null {
   const { rA, rB } = alignedAdjReturns(assetSeries, benchSeries)
-  if (rA.length >= MIN_BETA_OBS) {
-    const b = computeBeta(rA, rB)
-    if (b !== null && Number.isFinite(b)) return { beta: b, fallback: false }
-  }
-  return { beta: FALLBACK_BETA_BY_TYPE[assetType], fallback: true }
+  if (rA.length < minObs) return null
+  const b = computeBeta(rA, rB)
+  return b !== null && Number.isFinite(b) ? b : null
 }
