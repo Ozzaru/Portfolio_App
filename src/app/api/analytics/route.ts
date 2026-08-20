@@ -13,6 +13,7 @@ import { benchmarkPreset } from '@/lib/analytics/benchmarks'
 import type { Period, PricePointAdj, PriceSeriesByTicker } from '@/lib/analytics/types'
 import type { Transaction } from '@/lib/portfolio/holdings'
 import { loadFxSeries } from '@/lib/fx/load'
+import { fxFloor } from '@/lib/fx/floor'
 import { toBaseCurrency, convertSeries, transactionsToBaseCurrency } from '@/lib/fx/convert'
 import { FX_TICKER } from '@/lib/fx/constants'
 
@@ -130,17 +131,19 @@ export async function GET(request: Request) {
 
   // Frontera: todo pasa a CLP antes del motor, que permanece agnóstico.
   //
-  // El piso del FX es la PRIMERA TRANSACCIÓN, no el inicio del período:
-  // `transactionsToBaseCurrency` convierte el cost basis de cada compra al FX de
-  // SU fecha, así que recortar al período rompería toda cartera con compras
-  // anteriores. `loadFxSeries` con piso trae también la semilla, por la misma
-  // razón que los precios (la primera compra puede caer en fin de semana).
-  let fxSeries = await loadFxSeries(supabase, firstTx)
+  // El piso del FX no es la primera transacción a secas. El cost basis sí lo
+  // necesita desde ahí (`transactionsToBaseCurrency` convierte cada compra al FX
+  // de SU fecha), pero las series de precios traen una semilla anterior a la
+  // ventana que no tiene cota inferior. Si el FX empieza después de esa semilla,
+  // `convertSeries` la descarta en silencio — y con un benchmark desactualizado
+  // eso vacía su serie entera y la línea desaparece. Ver fx/floor.test.ts.
+  const floor = fxFloor(firstTx, priceRows.map((r) => r.price_date))
+  let fxSeries = await loadFxSeries(supabase, floor)
   if (fxSeries.length === 0) {
     // El FX es un ticker más: si no hay historia, se descarga como el benchmark.
     try {
       await downloadSeries(supabase, FX_TICKER, 'etf') // 'etf' lo enruta a Yahoo
-      fxSeries = await loadFxSeries(supabase, firstTx)
+      fxSeries = await loadFxSeries(supabase, floor)
     } catch (e) {
       benchmarkError = benchmarkError ?? (e instanceof Error ? e.message : 'FX no disponible')
     }
