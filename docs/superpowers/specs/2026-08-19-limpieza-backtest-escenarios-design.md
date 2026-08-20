@@ -1,7 +1,7 @@
 # Limpieza — Eliminar Backtest y Escenarios · Diseño
 
 **Fecha:** 2026-08-19
-**Estado:** diseño aprobado, pendiente de plan de implementación
+**Estado:** implementado y verificado (27 archivos de test, 181 tests en verde)
 **Depende de:** nada (primer proyecto del ciclo post-MVP)
 **Ciclo:** Proyecto 1 de 6. Ver §10 para el orden completo.
 
@@ -378,7 +378,7 @@ falta recortar. Hay que decidir la política.
 
 | # | Proyecto | Estado |
 |---|---|---|
-| 1 | **Limpieza** (este spec) | diseño aprobado |
+| 1 | **Limpieza** (este spec) | implementada |
 | 2 | Performance | pendiente |
 | 3 | Portafolios CLP / USD | pendiente |
 | 4 | Dashboard: multi-benchmark + formato de fecha | pendiente |
