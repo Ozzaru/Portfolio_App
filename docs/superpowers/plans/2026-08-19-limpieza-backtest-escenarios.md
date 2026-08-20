@@ -99,7 +99,7 @@ Este grep va contra el link entrecomillado, no contra la cadena `/scenarios` a s
 - [ ] **Step 4: Correr los tests**
 
 Run: `npm test`
-Expected: **31 archivos, 212 tests, verdes.** El conteo NO cambia: `src/lib/scenarios/` sigue existiendo con sus 4 archivos de test. Solo se borró la UI.
+Expected: **31 archivos, 212 tests, verdes.** El conteo NO cambia: `src/lib/scenarios/` sigue existiendo con sus 3 archivos de test (`beta`, `engine`, `stress`). Solo se borró la UI.
 
 - [ ] **Step 5: Correr el build**
 
@@ -318,7 +318,7 @@ Expected: limpio.
 Run: `npm run build`
 Expected: build exitoso.
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 12: Commit**
 
 ```bash
 git add -A
@@ -711,7 +711,59 @@ Cada proyecto lleva su propio spec y plan, igual que las fases.
 **Dependencias:** 4 depende de 1 (usa `analytics/synthetic/` y `analytics/beta.ts`) y de 3 (el benchmark se elige por portafolio) · 6 depende de 5 (el cron necesita un endpoint público al que pegarle).
 ```
 
-- [ ] **Step 9: Verificar que el README no menciona funcionalidad muerta**
+- [ ] **Step 9: Corregir la descripción de la app en `layout.tsx`**
+
+Detectado en la revisión de la Tarea 1. `src/app/layout.tsx:17` describe la app como algo que ya no es, y esa cadena es **visible para el usuario** (metadata de la página, no un comentario).
+
+Reemplazar:
+
+```ts
+  description: 'Gestión de portafolio personal: posiciones, analítica, backtesting, escenarios y alertas',
+```
+
+por:
+
+```ts
+  description: 'Gestión de portafolio personal: posiciones, analítica, benchmarks y alertas',
+```
+
+- [ ] **Step 10: Corregir los comentarios de `src/lib/fx/` que cuentan tres constructores**
+
+También detectado en la revisión de la Tarea 1. Dos comentarios afirman que hay **tres** rutas que construyen `PriceSeriesByTicker` con `ORDER BY price_date asc`. Tras esta limpieza queda **una** (`analytics`). Son comentarios que documentan una precondición real, así que dejarlos mintiendo es peor que no tenerlos.
+
+En `src/lib/fx/convert.ts` (alrededor de la línea 41), reemplazar:
+
+```ts
+  // documentado de `PriceSeriesByTicker` y lo cumplen los tres constructores
+  // reales (analytics/backtest/scenarios routes, `ORDER BY price_date asc`).
+```
+
+por:
+
+```ts
+  // documentado de `PriceSeriesByTicker` y lo cumple su constructor real
+  // (la ruta de analytics, `ORDER BY price_date asc`).
+```
+
+En `src/lib/fx/convert.test.ts` (alrededor de la línea 77), reemplazar:
+
+```ts
+    // solo es correcto si `points` también avanza en el tiempo: los tres
+    // constructores reales (analytics/backtest/scenarios routes) arman la
+    // serie con `ORDER BY price_date ascending`, y `priceAsOf`/`loadFxSeries`
+```
+
+por:
+
+```ts
+    // solo es correcto si `points` también avanza en el tiempo: su constructor
+    // real (la ruta de analytics) arma la serie con
+    // `ORDER BY price_date ascending`, y `priceAsOf`/`loadFxSeries`
+```
+
+Correr `npm test` después de este paso: **27 archivos, 189 tests, verdes.** Son cambios de comentario, no de comportamiento — si algún test cambia de resultado, se editó código por error.
+
+- [ ] **Step 11: Verificar que el README no menciona funcionalidad muerta**
 
 Run: `grep -n -i "backtest\|escenario\|scenario" README.md`
 Expected: solo 3 tipos de mención sobreviven, todas correctas:
@@ -721,7 +773,7 @@ Expected: solo 3 tipos de mención sobreviven, todas correctas:
 
 Cualquier otra mención es una que se escapó.
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 12: Commit**
 
 ```bash
 git add -A
