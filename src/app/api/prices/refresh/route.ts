@@ -7,6 +7,7 @@ import { refreshQuotes, type AssetRef } from '@/lib/market-data/refresh'
 import { computeHoldings, type Transaction } from '@/lib/portfolio/holdings'
 import { computeSnapshotValue } from '@/lib/portfolio/snapshot'
 import { evaluateAndPersist } from '@/lib/alerts/run'
+import { benchmarkRefsToRefresh } from '@/lib/analytics/benchmarks'
 import { FX_TICKER, BASE_CURRENCY } from '@/lib/fx/constants'
 import { loadFxSeries } from '@/lib/fx/load'
 import { fxAsOf, transactionsToBaseCurrency } from '@/lib/fx/convert'
@@ -25,7 +26,20 @@ export async function POST() {
     yahoo: createYahooAdapter(defaultFetcher),
     coingecko: createCoinGeckoAdapter(defaultFetcher),
   }
-  const { quotes, results } = await refreshQuotes((assets ?? []) as AssetRef[], adapters)
+  // Los benchmarks se refrescan junto a los activos del usuario. No tienen fila
+  // en `assets` —no son posiciones—, así que sin esto nadie los mantenía al día:
+  // su único escritor era `downloadSeries` en /api/analytics, que sólo dispara
+  // cuando el ticker no tiene NINGUNA fila. Tras el primer backfill quedaban
+  // congelados y la línea del gráfico salía plana en silencio.
+  //
+  // Van en el grupo Yahoo normal, sin el tratamiento aparte que recibe el FX:
+  // `yahoo.fetchQuotes` aísla cada ticker en su propio try/catch, así que un
+  // fallo de SPY no puede tumbar las cotizaciones ya obtenidas.
+  const refs = [
+    ...((assets ?? []) as AssetRef[]),
+    ...benchmarkRefsToRefresh((assets ?? []).map((a) => a.ticker)),
+  ]
+  const { quotes, results } = await refreshQuotes(refs, adapters)
 
   // El FX se pide APARTE, no dentro del grupo Yahoo: `refreshQuotes` captura por
   // fuente y `fetchQuotes` itera en secuencia, así que un fallo del tipo de

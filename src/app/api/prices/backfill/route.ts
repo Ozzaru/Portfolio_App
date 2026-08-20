@@ -6,6 +6,7 @@ import { createCoinGeckoAdapter } from '@/lib/market-data/coingecko'
 import { createAlphaVantageAdapter } from '@/lib/market-data/alpha-vantage'
 import { backfillHistory, type AssetRef } from '@/lib/market-data/refresh'
 import { isoYearsAgo } from '@/lib/market-data/dates'
+import { benchmarkRefsToRefresh } from '@/lib/analytics/benchmarks'
 import { FX_TICKER } from '@/lib/fx/constants'
 
 export async function POST() {
@@ -29,9 +30,13 @@ export async function POST() {
   // El tipo de cambio se trata como un ticker más de Yahoo. No tiene fila en
   // `assets`, así que se inyecta como AssetRef sintético: `asset_type: 'stock'`
   // lo enruta a Yahoo vía quoteSourceFor.
+  // Los benchmarks se rellenan junto al FX y por la misma razón: no tienen fila
+  // en `assets`. El refresh sólo agrega la cotización de HOY, así que es este
+  // backfill el que cierra el histórico de 5 años que la gráfica necesita.
   const refs: AssetRef[] = [
     ...((assets ?? []) as AssetRef[]),
     { ticker: FX_TICKER, asset_type: 'stock' },
+    ...benchmarkRefsToRefresh([...(assets ?? []).map((a) => a.ticker), FX_TICKER]),
   ]
   const { rows, results } = await backfillHistory(refs, fromISO, adapters)
 
