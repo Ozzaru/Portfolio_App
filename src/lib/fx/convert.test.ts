@@ -74,9 +74,9 @@ describe('convertSeries', () => {
   it('asume que `points` viene ordenado ascendente (precondición documentada en PriceSeriesByTicker); con orden roto el cursor no retrocede y arrastra un FX obsoleto', () => {
     // El cursor lineal recorre `fxSeries` una sola vez, hacia adelante, para
     // no volver a rebobinarla en cada punto (esa es la optimización). Eso
-    // solo es correcto si `points` también avanza en el tiempo: los tres
-    // constructores reales (analytics/backtest/scenarios routes) arman la
-    // serie con `ORDER BY price_date ascending`, y `priceAsOf`/`loadFxSeries`
+    // solo es correcto si `points` también avanza en el tiempo: su constructor
+    // real (la ruta de analytics) arma la serie con
+    // `ORDER BY price_date ascending`, y `priceAsOf`/`loadFxSeries`
     // documentan el mismo requisito para `fxSeries`. Este test fija a
     // propósito qué pasa si esa precondición se rompe, para que quede como
     // contrato explícito y no como detalle interno que alguien confía en
