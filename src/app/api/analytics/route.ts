@@ -7,8 +7,8 @@ import { createCoinGeckoAdapter } from '@/lib/market-data/coingecko'
 import { createAlphaVantageAdapter } from '@/lib/market-data/alpha-vantage'
 import { backfillHistory, type AssetRef } from '@/lib/market-data/refresh'
 import { isoYearsAgo } from '@/lib/market-data/dates'
-import { fetchAllRows } from '@/lib/supabase/paginate'
 import { computeAnalytics } from '@/lib/analytics/engine'
+import { periodStartDate } from '@/lib/analytics/dates'
 import { benchmarkPreset } from '@/lib/analytics/benchmarks'
 import type { Period, PricePointAdj, PriceSeriesByTicker } from '@/lib/analytics/types'
 import type { Transaction } from '@/lib/portfolio/holdings'
@@ -61,56 +61,58 @@ export async function GET(request: Request) {
   const userTickers = [...assetTypeByTicker.keys()]
   const today = new Date().toISOString().slice(0, 10)
 
-  // Auto-gestión del benchmark: descargar su histórico si falta.
+  // Ventana del período. `periodStartDate` necesita la primera transacción, así
+  // que esto sólo puede calcularse una vez que llegaron: los precios dependen de
+  // la query anterior, igual que en /api/positions. El motor recalcula el mismo
+  // inicio internamente — es una función pura sobre los mismos argumentos, así
+  // que no pueden divergir.
+  const firstTx = transactions.map((t) => t.executedAt).sort()[0] ?? today
+  const windowStart = periodStartDate(period, firstTx, today)
+
+  const wantedTickers = [...new Set([...userTickers, benchmarkTicker])]
+
+  // Sólo la ventana del período + una semilla anterior por ticker (migración
+  // 0005). Antes se traía TODO el histórico en páginas secuenciales aunque el
+  // usuario hubiera pedido "1 semana". La semilla es obligatoria: `windowStart`
+  // suele caer en fin de semana y el forward-fill de `priceAsOf` necesita un
+  // punto ≤ esa fecha (ver windowing.test.ts).
+  type WindowedRow = { ticker: string; price: number; adj_price: number | null; price_date: string }
+  const fetchWindowed = async (tickers: string[]): Promise<WindowedRow[]> => {
+    if (tickers.length === 0) return []
+    const { data, error } = await supabase.rpc('prices_windowed', {
+      p_tickers: tickers,
+      p_from: windowStart,
+    })
+    if (error) throw new Error(error.message)
+    return (data ?? []) as WindowedRow[]
+  }
+
+  let priceRows: WindowedRow[]
+  try {
+    priceRows = await fetchWindowed(wantedTickers)
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'price_cache error' }, { status: 500 })
+  }
+
+  // Auto-gestión del benchmark: si no volvió NINGUNA fila suya —ni siquiera la
+  // semilla— es que no tiene histórico y hay que descargarlo. Antes esto costaba
+  // un `count` por adelantado en cada request; ahora se decide con lo que ya
+  // llegó, y en el camino común (el histórico existe) no cuesta ningún viaje.
   let benchmarkError: string | null = null
-  if (preset) {
+  if (!preset) {
+    benchmarkError = `benchmark "${benchmarkTicker}" no reconocido`
+  } else if (!priceRows.some((r) => r.ticker === benchmarkTicker)) {
     try {
-      const benchCount = await countBenchmarkRows(supabase, benchmarkTicker)
-      if (benchCount < 2) {
-        await downloadSeries(supabase, preset.ticker, preset.assetType)
-      }
+      await downloadSeries(supabase, preset.ticker, preset.assetType)
+      priceRows = await fetchWindowed(wantedTickers)
     } catch (e) {
       benchmarkError = e instanceof Error ? e.message : 'benchmark no disponible'
     }
-  } else {
-    benchmarkError = `benchmark "${benchmarkTicker}" no reconocido`
   }
 
-  // El FX es un ticker más: si no hay historia, se descarga como el benchmark.
-  try {
-    if ((await countBenchmarkRows(supabase, FX_TICKER)) < 2) {
-      await downloadSeries(supabase, FX_TICKER, 'etf') // 'etf' lo enruta a Yahoo
-    }
-  } catch (e) {
-    benchmarkError = benchmarkError ?? (e instanceof Error ? e.message : 'FX no disponible')
-  }
-
-  // Cargar price_cache de los tickers del usuario + el benchmark.
-  const wantedTickers = [...new Set([...userTickers, benchmarkTicker])]
   const priceSeries: PriceSeriesByTicker = new Map()
   let benchmarkSeries: PricePointAdj[] | null = null
-  if (wantedTickers.length > 0) {
-    // Paginado: un select sin .range() queda topado al "Max rows" de Supabase
-    // (1000) y, con orden ascendente, descartaría los precios MÁS recientes.
-    // Orden total determinista (price_date, ticker, source) para no perder ni
-    // duplicar filas entre páginas; price_date asc lo exige el motor (priceAsOf).
-    type PriceCacheRow = { ticker: string; price: number; adj_price: number | null; price_date: string }
-    let priceRows: PriceCacheRow[]
-    try {
-      priceRows = await fetchAllRows<PriceCacheRow>((from, to) =>
-        supabase
-          .from('price_cache')
-          .select('ticker, price, adj_price, price_date')
-          .in('ticker', wantedTickers)
-          .order('price_date', { ascending: true })
-          .order('ticker', { ascending: true })
-          .order('source', { ascending: true })
-          .range(from, to),
-      )
-    } catch (e) {
-      return NextResponse.json({ error: e instanceof Error ? e.message : 'price_cache error' }, { status: 500 })
-    }
-
+  {
     const byTicker = new Map<string, PricePointAdj[]>()
     for (const row of priceRows) {
       const arr = byTicker.get(row.ticker) ?? []
@@ -127,7 +129,22 @@ export async function GET(request: Request) {
   }
 
   // Frontera: todo pasa a CLP antes del motor, que permanece agnóstico.
-  const fxSeries = await loadFxSeries(supabase)
+  //
+  // El piso del FX es la PRIMERA TRANSACCIÓN, no el inicio del período:
+  // `transactionsToBaseCurrency` convierte el cost basis de cada compra al FX de
+  // SU fecha, así que recortar al período rompería toda cartera con compras
+  // anteriores. `loadFxSeries` con piso trae también la semilla, por la misma
+  // razón que los precios (la primera compra puede caer en fin de semana).
+  let fxSeries = await loadFxSeries(supabase, firstTx)
+  if (fxSeries.length === 0) {
+    // El FX es un ticker más: si no hay historia, se descarga como el benchmark.
+    try {
+      await downloadSeries(supabase, FX_TICKER, 'etf') // 'etf' lo enruta a Yahoo
+      fxSeries = await loadFxSeries(supabase, firstTx)
+    } catch (e) {
+      benchmarkError = benchmarkError ?? (e instanceof Error ? e.message : 'FX no disponible')
+    }
+  }
   let baseTransactions: Transaction[]
   try {
     baseTransactions = transactionsToBaseCurrency(transactions, currencyByTicker, fxSeries)
@@ -151,15 +168,6 @@ export async function GET(request: Request) {
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-async function countBenchmarkRows(supabase: any, ticker: string): Promise<number> {
-  const { count, error } = await supabase
-    .from('price_cache')
-    .select('id', { count: 'exact', head: true })
-    .eq('ticker', ticker)
-  if (error) throw new Error(error.message)
-  return count ?? 0
-}
-
 async function downloadSeries(supabase: any, ticker: string, assetType: 'etf' | 'crypto') {
   const apiKey = process.env.ALPHA_VANTAGE_API_KEY
   const adapters = {
