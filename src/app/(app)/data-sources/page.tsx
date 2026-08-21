@@ -1,7 +1,9 @@
 // src/app/(app)/data-sources/page.tsx
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
+import { useResource } from '@/lib/hooks/use-resource'
+import { invalidateAfter } from '@/lib/cache/resources'
 
 interface PriceRow {
   id: string
@@ -34,21 +36,20 @@ const apiSources = [
 ]
 
 export default function DataSourcesPage() {
-  const [prices, setPrices] = useState<PriceRow[]>([])
-  const [status, setStatus] = useState<SourceStatus[]>([])
   const [results, setResults] = useState<RefreshResult[]>([])
   const [busy, setBusy] = useState<null | 'refresh' | 'backfill'>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    const [pRes, sRes] = await Promise.all([fetch('/api/prices'), fetch('/api/prices/status')])
-    if (pRes.ok) pRes.json().then(setPrices)
-    if (sRes.ok) sRes.json().then(setStatus)
-  }, [])
+  const { data: pricesData } = useResource<PriceRow[]>('/api/prices')
+  const { data: statusData } = useResource<SourceStatus[]>('/api/prices/status')
+  const prices = pricesData ?? []
+  const status = statusData ?? []
 
-  useEffect(() => {
-    load()
-  }, [load])
+  // Refrescar precios es la mutación de mayor alcance: cambia posiciones,
+  // analítica y la caché de precios, y además `/api/prices/refresh` corre
+  // `evaluateAndPersist`, así que puede dejar alertas disparadas. El prefijo
+  // `/api/prices` alcanza también a `/api/prices/status`.
+  const load = useCallback(() => invalidateAfter('prices'), [])
 
   async function run(action: 'refresh' | 'backfill') {
     setBusy(action)

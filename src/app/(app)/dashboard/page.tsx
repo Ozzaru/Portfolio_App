@@ -1,7 +1,7 @@
 // src/app/(app)/dashboard/page.tsx
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useResource } from '@/lib/hooks/use-resource'
 import {
   PieChart,
   Pie,
@@ -64,35 +64,21 @@ function KpiCard({ label, value, accent }: { label: string; value: string; accen
 }
 
 export default function DashboardPage() {
-  const [positions, setPositions] = useState<Position[]>([])
-  const [totals, setTotals] = useState<Totals | null>(null)
-
-  useEffect(() => {
-    fetch('/api/positions')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data) {
-          setPositions(data.positions)
-          setTotals(data.totals)
-        }
-      })
-  }, [])
-
   const [period, setPeriod] = usePeriod()
   const [benchmark] = useBenchmark()
-  const [series, setSeries] = useState<SeriesPoint[]>([])
 
-  useEffect(() => {
-    let active = true
-    fetch(`/api/analytics?period=${period}&benchmark=${benchmark}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (active && data) setSeries(data.series as SeriesPoint[])
-      })
-    return () => {
-      active = false
-    }
-  }, [period, benchmark])
+  // Ambas lecturas van por el caché compartido. `/api/positions` la comparte con
+  // la página de alertas, y `/api/analytics` con la de analítica usando LA MISMA
+  // clave: navegar entre dashboard y analítica ya no repite la petición más cara
+  // del sistema.
+  const { data: positionsData } = useResource<{ positions: Position[]; totals: Totals }>('/api/positions')
+  const { data: analyticsData } = useResource<{ series: SeriesPoint[] }>(
+    `/api/analytics?period=${period}&benchmark=${benchmark}`
+  )
+
+  const positions = positionsData?.positions ?? []
+  const totals = positionsData?.totals ?? null
+  const series = analyticsData?.series ?? []
 
   const allocation = positions
     .filter((p) => p.marketValue !== null)

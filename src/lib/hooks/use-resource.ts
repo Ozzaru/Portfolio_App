@@ -47,8 +47,16 @@ export function useResource<T>(key: string | null): Resource<T> {
 
   const data = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
 
+  // Depende de `data`, no sólo de `key`. Cuando una mutación invalida la clave,
+  // `data` pasa a `undefined` y esto vuelve a disparar la carga: sin esa
+  // dependencia la vista se vaciaría y se quedaría vacía hasta desmontar.
+  //
+  // No hay bucle: al resolver, `data` deja de ser `undefined` y la guarda corta.
+  // Si falla, `data` sigue `undefined` pero las dependencias no cambian, así que
+  // el efecto no se vuelve a ejecutar. Y varios consumidores de la misma clave
+  // reaccionando a la vez comparten un solo viaje, por el dedup del store.
   useEffect(() => {
-    if (key === null) return
+    if (key === null || data !== undefined) return
     let active = true
     resources.load<T>(key, fetchJson).catch((e: unknown) => {
       if (active) setFailure({ key, error: e instanceof Error ? e : new Error(String(e)) })
@@ -56,7 +64,7 @@ export function useResource<T>(key: string | null): Resource<T> {
     return () => {
       active = false
     }
-  }, [key])
+  }, [key, data])
 
   const error = failure !== null && failure.key === key ? failure.error : null
 
