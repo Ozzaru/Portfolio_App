@@ -2,6 +2,7 @@
 'use client'
 
 import { type CSSProperties } from 'react'
+import { useParams } from 'next/navigation'
 import { useResource } from '@/lib/hooks/use-resource'
 import {
   LineChart,
@@ -17,7 +18,6 @@ import { PeriodSelector } from '@/components/period-selector'
 import { BenchmarkSelector } from '@/components/benchmark-selector'
 import { usePeriod, useBenchmark } from '@/lib/hooks/use-prefs'
 import { formatMoney } from '@/lib/format/money'
-import { BASE_CURRENCY } from '@/lib/fx/constants'
 
 interface AnalyticsData {
   series: { date: string; portfolio: number; benchmark: number | null }[]
@@ -32,10 +32,10 @@ interface AnalyticsData {
   perAsset: { ticker: string; return: number | null }[]
   correlation: { tickers: string[]; matrix: (number | null)[][] }
   benchmarkError: string | null
+  baseCurrency: string
 }
 
 const pct = (n: number | null) => (n === null ? '—' : `${(n * 100).toFixed(1)}%`)
-const money = (n: number | null) => formatMoney(n, BASE_CURRENCY)
 const num = (n: number | null) => (n === null ? '—' : n.toFixed(2))
 
 function MetricCard({ label, value, accent }: { label: string; value: string; accent?: 'up' | 'down' }) {
@@ -60,15 +60,20 @@ function corrStyle(v: number | null): CSSProperties {
 }
 
 export default function AnalyticsPage() {
+  const { portfolio } = useParams<{ portfolio: string }>()
   const [period, setPeriod] = usePeriod()
   const [benchmark, setBenchmark] = useBenchmark()
   // Misma clave que usa el dashboard: venir de ahí sin cambiar período ni
   // benchmark no repite la petición. El caché también reemplaza el baile de
   // `loadedKey` que existía para derivar `loading` sin setState en el effect.
   const { data, loading } = useResource<AnalyticsData>(
-    `/api/analytics?period=${period}&benchmark=${benchmark}`
+    `/api/analytics?period=${period}&benchmark=${benchmark}&portfolio=${portfolio}`
   )
   const s = data?.summary
+
+  // La moneda de medición viene del portafolio, en la respuesta de la API.
+  const baseCurrency = data?.baseCurrency ?? ''
+  const money = (n: number | null) => formatMoney(n, baseCurrency)
   const hasSeries = (data?.series.length ?? 0) >= 2
 
   return (
@@ -107,7 +112,7 @@ export default function AnalyticsPage() {
               value={pct(s.portfolioTwr)}
               accent={s.portfolioTwr === null ? undefined : s.portfolioTwr >= 0 ? 'up' : 'down'}
             />
-            <MetricCard label={`Benchmark (TWR, en ${BASE_CURRENCY})`} value={pct(s.benchmarkTwr)} />
+            <MetricCard label={`Benchmark (TWR, en ${baseCurrency})`} value={pct(s.benchmarkTwr)} />
             <MetricCard
               label="P&L del período"
               value={money(s.absolutePnl)}
@@ -133,7 +138,7 @@ export default function AnalyticsPage() {
                   <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', color: '#e2e8f0' }} />
                   <Legend />
                   <Line type="monotone" dataKey="portfolio" name="Portafolio" stroke="#3b82f6" dot={false} />
-                  <Line type="monotone" dataKey="benchmark" name={`Benchmark (${BASE_CURRENCY})`} stroke="#22c55e" dot={false} />
+                  <Line type="monotone" dataKey="benchmark" name={`Benchmark (${baseCurrency})`} stroke="#22c55e" dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
