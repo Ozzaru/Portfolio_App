@@ -115,9 +115,9 @@ export default function Sidebar() {
         })}
       </nav>
 
+      {/* slate-400, no 600: sobre `bg-slate-950` el 600 da ~2.5:1 de contraste
+          —por debajo del mínimo legible— y en `text-xs` desaparece del todo. */}
       {activePortfolio && (
-        {/* slate-400, no 600: sobre `bg-slate-950` el 600 da ~2.5:1 de contraste
-            —por debajo del mínimo legible— y en `text-xs` desaparece del todo. */}
         <p className="mt-4 text-xs text-slate-400">Midiendo en {activePortfolio.baseCurrency}</p>
       )}
 

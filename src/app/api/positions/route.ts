@@ -5,7 +5,7 @@ import { computeHoldings, type Transaction } from '@/lib/portfolio/holdings'
 import { valuePositions, portfolioTotals, type NativeQuote } from '@/lib/portfolio/valuation'
 import { loadFxSeries } from '@/lib/fx/load'
 import { fxAsOf, transactionsToBaseCurrency } from '@/lib/fx/convert'
-import { resolvePortfolio, isLegacyConsolidated } from '@/lib/portfolio/context'
+import { requirePortfolio } from '@/lib/portfolio/context'
 
 export async function GET(request: Request) {
   const supabase = await createClient()
@@ -15,15 +15,15 @@ export async function GET(request: Request) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { searchParams } = new URL(request.url)
-  const ctx = await resolvePortfolio(supabase, searchParams.get('portfolio'))
-  if (!ctx) return NextResponse.json({ error: 'portafolio no encontrado' }, { status: 404 })
+  const ctx = await requirePortfolio(supabase, searchParams)
+  if (ctx instanceof NextResponse) return ctx
 
-  // `!inner` fuerza el join para poder filtrar por una columna del activo. Sin
-  // portafolio (afordance legacy) no se filtra y devuelve todo, como antes.
-  let txPromise = supabase
+  // `!inner` fuerza el join para poder filtrar por una columna del activo: la
+  // transaccion pertenece al portafolio de su activo.
+  const txQuery = supabase
     .from('transactions')
     .select('asset_id, side, quantity, price, fees, executed_at, assets!inner(ticker, currency, portfolio_id)')
-  if (!isLegacyConsolidated(ctx)) txPromise = txPromise.eq('assets.portfolio_id', ctx.id)
+  const txPromise = txQuery.eq('assets.portfolio_id', ctx.id)
 
   // El FX sólo hace falta si hay algo que convertir. El portafolio internacional
   // mide en USD y sus activos ya cotizan en USD: se ahorra el viaje entero, y

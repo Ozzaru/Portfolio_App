@@ -14,7 +14,7 @@ import type { Period, PricePointAdj, PriceSeriesByTicker } from '@/lib/analytics
 import type { Transaction } from '@/lib/portfolio/holdings'
 import { loadFxSeries } from '@/lib/fx/load'
 import { fxFloor } from '@/lib/fx/floor'
-import { resolvePortfolio, isLegacyConsolidated } from '@/lib/portfolio/context'
+import { requirePortfolio } from '@/lib/portfolio/context'
 import { toBaseCurrency, convertSeries, transactionsToBaseCurrency } from '@/lib/fx/convert'
 import { FX_TICKER } from '@/lib/fx/constants'
 
@@ -34,17 +34,15 @@ export async function GET(request: Request) {
   const benchmarkTicker = (searchParams.get('benchmark') ?? 'SPY').toUpperCase()
   const preset = benchmarkPreset(benchmarkTicker)
 
-  const ctx = await resolvePortfolio(supabase, searchParams.get('portfolio'))
-  if (!ctx) return NextResponse.json({ error: 'portafolio no encontrado' }, { status: 404 })
+  const ctx = await requirePortfolio(supabase, searchParams)
+  if (ctx instanceof NextResponse) return ctx
 
   // Transacciones + tipos de activo del portafolio. `!inner` fuerza el join para
-  // poder filtrar por una columna del activo; sin portafolio (afordance legacy)
-  // no se filtra y devuelve todo, como antes.
-  let txQuery = supabase
+  // poder filtrar por una columna del activo.
+  const { data: txRows, error: txErr } = await supabase
     .from('transactions')
     .select('asset_id, side, quantity, price, fees, executed_at, assets!inner(ticker, asset_type, currency, portfolio_id)')
-  if (!isLegacyConsolidated(ctx)) txQuery = txQuery.eq('assets.portfolio_id', ctx.id)
-  const { data: txRows, error: txErr } = await txQuery
+    .eq('assets.portfolio_id', ctx.id)
   if (txErr) return NextResponse.json({ error: txErr.message }, { status: 500 })
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
