@@ -2,18 +2,26 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { transactionInputSchema } from '@/lib/validation/schemas'
+import { resolvePortfolio, isLegacyConsolidated } from '@/lib/portfolio/context'
 
-export async function GET() {
+export async function GET(request: Request) {
   const supabase = await createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data, error } = await supabase
+  const { searchParams } = new URL(request.url)
+  const ctx = await resolvePortfolio(supabase, searchParams.get('portfolio'))
+  if (!ctx) return NextResponse.json({ error: 'portafolio no encontrado' }, { status: 404 })
+
+  // La transacción pertenece al portafolio de su activo: se filtra por el join.
+  let query = supabase
     .from('transactions')
-    .select('id, asset_id, side, quantity, price, fees, commission, iva, executed_at, assets(ticker, currency)')
+    .select('id, asset_id, side, quantity, price, fees, commission, iva, executed_at, assets!inner(ticker, currency, portfolio_id)')
     .order('executed_at', { ascending: false })
+  if (!isLegacyConsolidated(ctx)) query = query.eq('assets.portfolio_id', ctx.id)
+  const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
 }
