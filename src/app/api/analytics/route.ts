@@ -14,6 +14,7 @@ import type { Period, PricePointAdj, PriceSeriesByTicker } from '@/lib/analytics
 import type { Transaction } from '@/lib/portfolio/holdings'
 import { loadFxSeries } from '@/lib/fx/load'
 import { fxFloor } from '@/lib/fx/floor'
+import { requirePortfolio } from '@/lib/portfolio/context'
 import { toBaseCurrency, convertSeries, transactionsToBaseCurrency } from '@/lib/fx/convert'
 import { FX_TICKER } from '@/lib/fx/constants'
 
@@ -33,10 +34,15 @@ export async function GET(request: Request) {
   const benchmarkTicker = (searchParams.get('benchmark') ?? 'SPY').toUpperCase()
   const preset = benchmarkPreset(benchmarkTicker)
 
-  // Transacciones + tipos de activo del usuario.
+  const ctx = await requirePortfolio(supabase, searchParams)
+  if (ctx instanceof NextResponse) return ctx
+
+  // Transacciones + tipos de activo del portafolio. `!inner` fuerza el join para
+  // poder filtrar por una columna del activo.
   const { data: txRows, error: txErr } = await supabase
     .from('transactions')
-    .select('asset_id, side, quantity, price, fees, executed_at, assets(ticker, asset_type, currency)')
+    .select('asset_id, side, quantity, price, fees, executed_at, assets!inner(ticker, asset_type, currency, portfolio_id)')
+    .eq('assets.portfolio_id', ctx.id)
   if (txErr) return NextResponse.json({ error: txErr.message }, { status: 500 })
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -137,37 +143,48 @@ export async function GET(request: Request) {
   // ventana que no tiene cota inferior. Si el FX empieza después de esa semilla,
   // `convertSeries` la descarta en silencio — y con un benchmark desactualizado
   // eso vacía su serie entera y la línea desaparece. Ver fx/floor.test.ts.
-  const floor = fxFloor(firstTx, priceRows.map((r) => r.price_date))
-  let fxSeries = await loadFxSeries(supabase, floor)
-  if (fxSeries.length === 0) {
-    // El FX es un ticker más: si no hay historia, se descarga como el benchmark.
-    try {
-      await downloadSeries(supabase, FX_TICKER, 'etf') // 'etf' lo enruta a Yahoo
-      fxSeries = await loadFxSeries(supabase, floor)
-    } catch (e) {
-      benchmarkError = benchmarkError ?? (e instanceof Error ? e.message : 'FX no disponible')
+  // El FX sólo hace falta si hay algo que convertir. El portafolio internacional
+  // mide en USD y sus activos y benchmarks ya cotizan en USD: se salta el viaje
+  // entero, y con él toda una clase de fallo (FX faltante, semilla, piso).
+  const needsFx = ctx.baseCurrency === 'CLP'
+  let fxSeries: Awaited<ReturnType<typeof loadFxSeries>> = []
+  if (needsFx) {
+    const floor = fxFloor(firstTx, priceRows.map((r) => r.price_date))
+    fxSeries = await loadFxSeries(supabase, floor)
+    if (fxSeries.length === 0) {
+      // El FX es un ticker más: si no hay historia, se descarga como el benchmark.
+      try {
+        await downloadSeries(supabase, FX_TICKER, 'etf') // 'etf' lo enruta a Yahoo
+        fxSeries = await loadFxSeries(supabase, floor)
+      } catch (e) {
+        benchmarkError = benchmarkError ?? (e instanceof Error ? e.message : 'FX no disponible')
+      }
     }
   }
   let baseTransactions: Transaction[]
   try {
-    baseTransactions = transactionsToBaseCurrency(transactions, currencyByTicker, fxSeries)
+    baseTransactions = transactionsToBaseCurrency(transactions, currencyByTicker, fxSeries, ctx.baseCurrency)
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'error de conversión' }, { status: 500 })
   }
 
   const result = computeAnalytics({
     transactions: baseTransactions,
-    priceSeries: toBaseCurrency(priceSeries, currencyByTicker, fxSeries),
+    priceSeries: toBaseCurrency(priceSeries, currencyByTicker, fxSeries, ctx.baseCurrency),
     // Los benchmarks del preset (SPY, BTC) cotizan en USD. Compararlos sin
     // convertir contra una cartera en CLP no significaría nada.
-    benchmarkSeries: benchmarkSeries ? convertSeries(benchmarkSeries, 'USD', fxSeries) : null,
+    benchmarkSeries: benchmarkSeries ? convertSeries(benchmarkSeries, 'USD', fxSeries, ctx.baseCurrency) : null,
     benchmarkTicker,
     assetTypeByTicker,
     period,
     today,
   })
 
-  return NextResponse.json({ ...result, benchmarkError: benchmarkError ?? result.benchmarkError })
+  return NextResponse.json({
+    ...result,
+    benchmarkError: benchmarkError ?? result.benchmarkError,
+    baseCurrency: ctx.baseCurrency,
+  })
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

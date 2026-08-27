@@ -41,14 +41,14 @@ describe('convertSeries', () => {
   ]
 
   it('multiplica price y adjPrice por el FX del día (dirección: CLP por 1 USD)', () => {
-    const out = convertSeries(usdPoints, 'USD', FX_SERIES)
+    const out = convertSeries(usdPoints, 'USD', FX_SERIES, 'CLP')
     expect(out[0]).toEqual({ date: '2026-01-05', price: 90_000, adjPrice: 81_000 })
     expect(out[1]).toEqual({ date: '2026-01-06', price: 182_000, adjPrice: 163_800 })
   })
 
   it('deja los valores en CLP sin modificar (pasa directo, sin redondeo)', () => {
     const clpPoints: PricePointAdj[] = [{ date: '2026-01-05', price: 79.68, adjPrice: 79.68 }]
-    expect(convertSeries(clpPoints, 'CLP', FX_SERIES)).toEqual(clpPoints)
+    expect(convertSeries(clpPoints, 'CLP', FX_SERIES, 'CLP')).toEqual(clpPoints)
   })
 
   it('descarta el punto si falta FX para su fecha (nunca lo deja pasar sin convertir)', () => {
@@ -56,19 +56,19 @@ describe('convertSeries', () => {
       { date: '2026-01-02', price: 100, adjPrice: 100 },
       { date: '2026-01-05', price: 100, adjPrice: 100 },
     ]
-    const out = convertSeries(points, 'USD', FX_SERIES)
+    const out = convertSeries(points, 'USD', FX_SERIES, 'CLP')
     expect(out).toHaveLength(1)
     expect(out[0].date).toBe('2026-01-05')
   })
 
   it('nunca agrega fechas: la salida es subconjunto de la entrada', () => {
-    const out = convertSeries(usdPoints, 'USD', FX_SERIES)
+    const out = convertSeries(usdPoints, 'USD', FX_SERIES, 'CLP')
     const input = new Set(usdPoints.map((p) => p.date))
     for (const p of out) expect(input.has(p.date)).toBe(true)
   })
 
   it('lanza ante una moneda no soportada en vez de convertirla mal', () => {
-    expect(() => convertSeries(usdPoints, 'EUR', FX_SERIES)).toThrow(/no soportada/)
+    expect(() => convertSeries(usdPoints, 'EUR', FX_SERIES, 'CLP')).toThrow(/no soportada/)
   })
 
   it('asume que `points` viene ordenado ascendente (precondición documentada en PriceSeriesByTicker); con orden roto el cursor no retrocede y arrastra un FX obsoleto', () => {
@@ -85,7 +85,7 @@ describe('convertSeries', () => {
       { date: '2026-01-09', price: 100, adjPrice: 100 },
       { date: '2026-01-05', price: 50, adjPrice: 50 },
     ]
-    const out = convertSeries(unsortedPoints, 'USD', FX_SERIES)
+    const out = convertSeries(unsortedPoints, 'USD', FX_SERIES, 'CLP')
     const outOfOrderPoint = out.find((p) => p.date === '2026-01-05')
     // Con lookup punto a punto (fxAsOf independiente por fecha, la
     // implementación anterior) esto habría dado 50 * 900 = 45.000 (el FX
@@ -107,7 +107,7 @@ describe('toBaseCurrency', () => {
       ['AAPL', 'USD'],
       ['ENELCHILE.SN', 'CLP'],
     ])
-    const out = toBaseCurrency(series, currencies, FX_SERIES)
+    const out = toBaseCurrency(series, currencies, FX_SERIES, 'CLP')
     expect(out.get('AAPL')![0].price).toBe(90_000)
     expect(out.get('ENELCHILE.SN')![0].price).toBe(79.68)
   })
@@ -116,7 +116,7 @@ describe('toBaseCurrency', () => {
     const series: PriceSeriesByTicker = new Map([
       ['SPY', [{ date: '2026-01-05', price: 100, adjPrice: 100 }]],
     ])
-    const out = toBaseCurrency(series, new Map(), FX_SERIES)
+    const out = toBaseCurrency(series, new Map(), FX_SERIES, 'CLP')
     expect(out.get('SPY')![0].price).toBe(90_000)
   })
 })
@@ -137,7 +137,7 @@ describe('transactionsToBaseCurrency', () => {
   ])
 
   it('usa el FX de executedAt, NO el de hoy', () => {
-    const [tx] = transactionsToBaseCurrency([buy('AAPL', '2026-01-05')], currencies, FX_SERIES)
+    const [tx] = transactionsToBaseCurrency([buy('AAPL', '2026-01-05')], currencies, FX_SERIES, 'CLP')
     expect(tx.price).toBe(90_000)
     expect(tx.fees).toBe(4_500)
   })
@@ -146,7 +146,8 @@ describe('transactionsToBaseCurrency', () => {
     const out = transactionsToBaseCurrency(
       [buy('AAPL', '2026-01-05'), buy('AAPL', '2026-01-09')],
       currencies,
-      FX_SERIES
+      FX_SERIES,
+      'CLP'
     )
     expect(out[0].price).toBe(90_000)
     expect(out[1].price).toBe(95_000)
@@ -154,12 +155,12 @@ describe('transactionsToBaseCurrency', () => {
 
   it('deja las transacciones en CLP intactas', () => {
     const tx = buy('ENELCHILE.SN', '2026-01-05')
-    expect(transactionsToBaseCurrency([tx], currencies, FX_SERIES)[0]).toEqual(tx)
+    expect(transactionsToBaseCurrency([tx], currencies, FX_SERIES, 'CLP')[0]).toEqual(tx)
   })
 
   it('LANZA si falta FX: descartar una compra falsearía la cartera', () => {
     expect(() =>
-      transactionsToBaseCurrency([buy('AAPL', '2026-01-02')], currencies, FX_SERIES)
+      transactionsToBaseCurrency([buy('AAPL', '2026-01-02')], currencies, FX_SERIES, 'CLP')
     ).toThrow(/USDCLP=X para 2026-01-02/)
   })
 
@@ -169,13 +170,54 @@ describe('transactionsToBaseCurrency', () => {
     // el mensaje debe decir desde cuándo hay histórico, no sugerir "ejecuta
     // el backfill" como si fuera a arreglarse.
     expect(() =>
-      transactionsToBaseCurrency([buy('AAPL', '2026-01-02')], currencies, FX_SERIES)
+      transactionsToBaseCurrency([buy('AAPL', '2026-01-02')], currencies, FX_SERIES, 'CLP')
     ).toThrow(/el histórico disponible empieza en 2026-01-05/)
   })
 
   it('LANZA con mensaje distinto si la serie FX está vacía (sin histórico en absoluto)', () => {
     expect(() =>
-      transactionsToBaseCurrency([buy('AAPL', '2026-01-02')], currencies, [])
+      transactionsToBaseCurrency([buy('AAPL', '2026-01-02')], currencies, [], 'CLP')
     ).toThrow(/falta el histórico de USDCLP=X; corre el backfill/)
+  })
+})
+
+// El portafolio internacional mide en USD: sus activos, sus transacciones y sus
+// benchmarks ya cotizan en USD, así que no necesita tipo de cambio EN ABSOLUTO.
+// Estos tests lo fijan pasando una serie FX VACÍA: si algo intentara convertir,
+// descartaría los puntos o lanzaría, y el test fallaría.
+describe('base USD (portafolio internacional)', () => {
+  it('una serie en USD pasa intacta, sin consultar el FX', () => {
+    const usd = [fx('2026-01-05', 100), fx('2026-01-06', 110)]
+    expect(convertSeries(usd, 'USD', [], 'USD')).toEqual(usd)
+  })
+
+  it('las transacciones en USD pasan intactas aunque no haya histórico de FX', () => {
+    // Con base CLP esto lanzaría "falta el histórico de USDCLP=X". Con base USD
+    // no hay conversión que hacer, así que la ausencia de FX es irrelevante.
+    const tx: Transaction = {
+      assetId: 'a1', ticker: 'TXN', side: 'buy',
+      quantity: 10, price: 150, fees: 1, executedAt: '2026-01-05',
+    }
+    const currencies = new Map([['TXN', 'USD']])
+    expect(transactionsToBaseCurrency([tx], currencies, [], 'USD')[0]).toEqual(tx)
+  })
+
+  it('el benchmark en USD no se convierte cuando la base es USD', () => {
+    const spy = [fx('2026-01-05', 400), fx('2026-01-06', 404)]
+    expect(convertSeries(spy, 'USD', [], 'USD')).toEqual(spy)
+  })
+
+  it('CLP → USD LANZA en vez de dividir mal', () => {
+    // No está implementado a propósito: los activos en pesos viven en el
+    // portafolio en pesos. Si esta combinación aparece, es un error de reparto
+    // y hay que verlo, no compensarlo con matemática inventada.
+    const clp = [fx('2026-01-05', 80_000)]
+    expect(() => convertSeries(clp, 'CLP', FX_SERIES, 'USD')).toThrow(/CLP → USD/)
+  })
+
+  it('toBaseCurrency con base USD deja el mapa completo sin tocar', () => {
+    const series: PriceSeriesByTicker = new Map([['TXN', [fx('2026-01-05', 150)]]])
+    const out = toBaseCurrency(series, new Map([['TXN', 'USD']]), [], 'USD')
+    expect(out.get('TXN')).toEqual(series.get('TXN'))
   })
 })

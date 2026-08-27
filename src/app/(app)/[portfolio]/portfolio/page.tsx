@@ -2,6 +2,7 @@
 'use client'
 
 import { useCallback, useRef, useState } from 'react'
+import { useParams } from 'next/navigation'
 import { useResource } from '@/lib/hooks/use-resource'
 import { invalidateAfter } from '@/lib/cache/resources'
 import { IVA_RATE } from '@/lib/fx/constants'
@@ -33,6 +34,7 @@ const btnCls =
   'rounded bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-500'
 
 export default function PortfolioPage() {
+  const { portfolio } = useParams<{ portfolio: string }>()
   const [error, setError] = useState<string | null>(null)
   const [txAssetId, setTxAssetId] = useState('')
   const [commission, setCommission] = useState('')
@@ -59,8 +61,8 @@ export default function PortfolioPage() {
   // `/api/assets` la comparte con la página de alertas. Una alta o baja acá
   // ensucia además posiciones y analítica, así que `invalidateAfter('portfolio')`
   // limpia las cuatro claves de una vez.
-  const { data: assetsData } = useResource<Asset[]>('/api/assets')
-  const { data: txsData } = useResource<Tx[]>('/api/transactions')
+  const { data: assetsData } = useResource<Asset[]>(`/api/assets?portfolio=${portfolio}`)
+  const { data: txsData } = useResource<Tx[]>(`/api/transactions?portfolio=${portfolio}`)
   const assets = assetsData ?? []
   const txs = txsData ?? []
 
@@ -104,7 +106,7 @@ export default function PortfolioPage() {
             e.preventDefault()
             const form = e.currentTarget
             const fd = new FormData(form)
-            const ok = await post('/api/assets', {
+            const ok = await post(`/api/assets?portfolio=${portfolio}`, {
               ticker: fd.get('ticker'),
               name: fd.get('name'),
               assetType: fd.get('assetType'),

@@ -5,25 +5,37 @@ import { computeHoldings, type Transaction } from '@/lib/portfolio/holdings'
 import { valuePositions, portfolioTotals, type NativeQuote } from '@/lib/portfolio/valuation'
 import { loadFxSeries } from '@/lib/fx/load'
 import { fxAsOf, transactionsToBaseCurrency } from '@/lib/fx/convert'
-import { BASE_CURRENCY } from '@/lib/fx/constants'
+import { requirePortfolio } from '@/lib/portfolio/context'
 
-export async function GET() {
+export async function GET(request: Request) {
   const supabase = await createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const txPromise = supabase
-    .from('transactions')
-    .select('asset_id, side, quantity, price, fees, executed_at, assets(ticker, currency)')
+  const { searchParams } = new URL(request.url)
+  const ctx = await requirePortfolio(supabase, searchParams)
+  if (ctx instanceof NextResponse) return ctx
 
-  // El FX se carga en paralelo con las transacciones: no depende de ellas. Los
-  // precios sí — hay que saber qué tickers pedir —, así que van después.
+  // `!inner` fuerza el join para poder filtrar por una columna del activo: la
+  // transaccion pertenece al portafolio de su activo.
+  const txQuery = supabase
+    .from('transactions')
+    .select('asset_id, side, quantity, price, fees, executed_at, assets!inner(ticker, currency, portfolio_id)')
+  const txPromise = txQuery.eq('assets.portfolio_id', ctx.id)
+
+  // El FX sólo hace falta si hay algo que convertir. El portafolio internacional
+  // mide en USD y sus activos ya cotizan en USD: se ahorra el viaje entero, y
+  // con él toda una clase de fallo (tipo de cambio faltante, semilla, piso).
+  const needsFx = ctx.baseCurrency === 'CLP'
   let txRes: Awaited<typeof txPromise>
   let fxSeries: Awaited<ReturnType<typeof loadFxSeries>>
   try {
-    ;[txRes, fxSeries] = await Promise.all([txPromise, loadFxSeries(supabase)])
+    ;[txRes, fxSeries] = await Promise.all([
+      txPromise,
+      needsFx ? loadFxSeries(supabase) : Promise.resolve([]),
+    ])
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'price_cache error' }, { status: 500 })
   }
@@ -73,13 +85,13 @@ export async function GET() {
   const today = new Date().toISOString().slice(0, 10)
   const fxToday = fxAsOf(fxSeries, today)
   const toBase = (ticker: string, nativePrice: number): number | null => {
-    if ((currencyByTicker.get(ticker) ?? 'USD') === BASE_CURRENCY) return nativePrice
+    if ((currencyByTicker.get(ticker) ?? 'USD') === ctx.baseCurrency) return nativePrice
     return fxToday !== null ? nativePrice * fxToday : null
   }
 
   let baseTransactions: Transaction[]
   try {
-    baseTransactions = transactionsToBaseCurrency(transactions, currencyByTicker, fxSeries)
+    baseTransactions = transactionsToBaseCurrency(transactions, currencyByTicker, fxSeries, ctx.baseCurrency)
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'error de conversión' }, { status: 500 })
   }
@@ -94,7 +106,7 @@ export async function GET() {
     if (basePrice !== null) quotes.push({ ticker, price: basePrice })
   }
 
-  const positions = valuePositions(holdings, quotes, native)
+  const positions = valuePositions(holdings, quotes, ctx.baseCurrency, native)
   const totals = portfolioTotals(positions)
 
   // P&L del día en base: ambos extremos convertidos con el MISMO FX, así que
@@ -109,5 +121,10 @@ export async function GET() {
     return sum + pos.quantity * (lastBase - prevBase)
   }, 0)
 
-  return NextResponse.json({ positions, totals: { ...totals, dailyPnl }, baseCurrency: BASE_CURRENCY })
+  return NextResponse.json({
+    positions,
+    totals: { ...totals, dailyPnl },
+    baseCurrency: ctx.baseCurrency,
+    portfolio: { slug: ctx.slug, name: ctx.name },
+  })
 }

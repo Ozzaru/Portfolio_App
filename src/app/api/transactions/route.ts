@@ -2,17 +2,24 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { transactionInputSchema } from '@/lib/validation/schemas'
+import { requirePortfolio } from '@/lib/portfolio/context'
 
-export async function GET() {
+export async function GET(request: Request) {
   const supabase = await createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const { searchParams } = new URL(request.url)
+  const ctx = await requirePortfolio(supabase, searchParams)
+  if (ctx instanceof NextResponse) return ctx
+
+  // La transacción pertenece al portafolio de su activo: se filtra por el join.
   const { data, error } = await supabase
     .from('transactions')
-    .select('id, asset_id, side, quantity, price, fees, commission, iva, executed_at, assets(ticker, currency)')
+    .select('id, asset_id, side, quantity, price, fees, commission, iva, executed_at, assets!inner(ticker, currency, portfolio_id)')
+    .eq('assets.portfolio_id', ctx.id)
     .order('executed_at', { ascending: false })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)

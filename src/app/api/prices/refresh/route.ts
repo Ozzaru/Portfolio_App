@@ -77,8 +77,8 @@ export async function POST() {
     if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
   }
 
-  // Snapshot de hoy (idempotente por unique(user_id, snapshot_date)).
-  const snapshotValue = await takeSnapshot(supabase, user.id, quotes)
+  // Un snapshot por portafolio, cada uno en SU moneda de medición.
+  const snapshots = await takeSnapshots(supabase, user.id, quotes)
 
   // Auto-evaluación de alertas tras refrescar precios (best-effort, no bloquea el refresh).
   try {
@@ -87,7 +87,7 @@ export async function POST() {
     console.error('alertas: evaluación tras refresh falló:', e instanceof Error ? e.message : e)
   }
 
-  return NextResponse.json({ results, quotes: quotes.length, snapshotValue })
+  return NextResponse.json({ results, quotes: quotes.length, snapshots })
 }
 
 // Determina la fuente (yahoo/coingecko) según el tipo del activo del ticker.
@@ -99,14 +99,60 @@ function sourceOf(ticker: string, assets: any[]): string {
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-async function takeSnapshot(supabase: any, userId: string, quotes: { ticker: string; price: number }[]) {
+
+// Un snapshot por portafolio. Antes era uno solo, consolidado en pesos, porque
+// no existían los portafolios; ahora cada uno guarda su valor en su propia
+// moneda de medición y el histórico deja de mezclar dos carteras en un número.
+async function takeSnapshots(
+  supabase: any,
+  userId: string,
+  quotes: { ticker: string; price: number }[]
+): Promise<Record<string, number | null>> {
+  const { data: portfolios, error } = await supabase
+    .from('portfolios')
+    .select('id, slug, base_currency')
+  if (error) {
+    console.error('snapshot: no se pudieron leer portfolios:', error.message)
+    return {}
+  }
+
+  // El FX se carga UNA vez y se comparte. Sólo lo necesitan los portafolios que
+  // miden en pesos; pedirlo dentro del bucle repetiría el mismo viaje por cada
+  // portafolio para obtener exactamente la misma serie.
+  let fxSeries: Awaited<ReturnType<typeof loadFxSeries>> = []
+  if ((portfolios ?? []).some((p: any) => p.base_currency !== undefined && p.base_currency === BASE_CURRENCY)) {
+    try {
+      fxSeries = await loadFxSeries(supabase)
+    } catch (e) {
+      console.error('snapshot: no se pudo cargar el FX:', e instanceof Error ? e.message : e)
+    }
+  }
+
+  const out: Record<string, number | null> = {}
+  for (const p of (portfolios ?? []) as any[]) {
+    out[p.slug] = await snapshotPortfolio(supabase, userId, p, quotes, fxSeries)
+  }
+  return out
+}
+
+async function snapshotPortfolio(
+  supabase: any,
+  userId: string,
+  portfolio: { id: string; slug: string; base_currency: string },
+  quotes: { ticker: string; price: number }[],
+  fxSeries: Awaited<ReturnType<typeof loadFxSeries>>
+): Promise<number | null> {
+  const base = portfolio.base_currency
+
   const { data: txRows, error } = await supabase
     .from('transactions')
-    .select('asset_id, side, quantity, price, fees, executed_at, assets(ticker, currency)')
+    .select('asset_id, side, quantity, price, fees, executed_at, assets!inner(ticker, currency, portfolio_id)')
+    .eq('assets.portfolio_id', portfolio.id)
   if (error) {
-    console.error('snapshot: no se pudieron leer transactions:', error.message)
+    console.error(`snapshot ${portfolio.slug}: no se pudieron leer transactions:`, error.message)
     return null
   }
+
   const transactions: Transaction[] = (txRows ?? []).map((row: any) => ({
     assetId: row.asset_id,
     ticker: row.assets?.ticker ?? '',
@@ -122,35 +168,40 @@ async function takeSnapshot(supabase: any, userId: string, quotes: { ticker: str
   }
   if (computeHoldings(transactions).length === 0) return null
 
-  // El snapshot se guarda en moneda BASE y con la moneda explícita, para que el
-  // histórico sea autodescriptivo y no vuelva a necesitar una migración.
   const today = new Date().toISOString().slice(0, 10)
   let totalValue: number
   try {
-    const fxSeries = await loadFxSeries(supabase)
     const fxToday = fxAsOf(fxSeries, today)
+    // `quotes` trae TODOS los tickers refrescados, incluidos benchmarks y el FX.
+    // Se filtra a los de este portafolio: los demás no son posiciones suyas.
     const baseQuotes = quotes.flatMap((q) => {
-      const currency = currencyByTicker.get(q.ticker) ?? 'USD'
-      if (currency === BASE_CURRENCY) return [q]
+      const currency = currencyByTicker.get(q.ticker)
+      if (currency === undefined) return []
+      if (currency === base) return [q]
       return fxToday !== null ? [{ ticker: q.ticker, price: q.price * fxToday }] : []
     })
     totalValue = computeSnapshotValue(
-      transactionsToBaseCurrency(transactions, currencyByTicker, fxSeries),
-      baseQuotes
+      transactionsToBaseCurrency(transactions, currencyByTicker, fxSeries, base),
+      baseQuotes,
+      base
     )
   } catch (e) {
-    console.error('snapshot: conversión a', BASE_CURRENCY, 'falló:', e instanceof Error ? e.message : e)
+    console.error(`snapshot ${portfolio.slug}: conversión a ${base} falló:`, e instanceof Error ? e.message : e)
     return null
   }
 
-  const { error: snapErr } = await supabase
-    .from('snapshots')
-    .upsert(
-      { user_id: userId, snapshot_date: today, total_value: totalValue, currency: BASE_CURRENCY },
-      { onConflict: 'user_id,snapshot_date' }
-    )
+  const { error: snapErr } = await supabase.from('snapshots').upsert(
+    {
+      user_id: userId,
+      portfolio_id: portfolio.id,
+      snapshot_date: today,
+      total_value: totalValue,
+      currency: base,
+    },
+    { onConflict: 'user_id,portfolio_id,snapshot_date' }
+  )
   if (snapErr) {
-    console.error('snapshot: no se pudo guardar:', snapErr.message)
+    console.error(`snapshot ${portfolio.slug}: no se pudo guardar:`, snapErr.message)
     return null
   }
   return totalValue

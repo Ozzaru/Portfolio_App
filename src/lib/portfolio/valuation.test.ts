@@ -14,7 +14,7 @@ const holding = (over: Partial<Holding> = {}): Holding => ({
 
 describe('valuePositions', () => {
   it('valora con el precio disponible', () => {
-    const [p] = valuePositions([holding()], [{ ticker: 'AAPL', price: 120 }])
+    const [p] = valuePositions([holding()], [{ ticker: 'AAPL', price: 120 }], 'CLP')
     expect(p.currentPrice).toBe(120)
     expect(p.marketValue).toBe(1200)
     expect(p.unrealizedPnl).toBe(200)
@@ -22,7 +22,7 @@ describe('valuePositions', () => {
   })
 
   it('marca null cuando no hay precio', () => {
-    const [p] = valuePositions([holding()], [])
+    const [p] = valuePositions([holding()], [], 'CLP')
     expect(p.currentPrice).toBeNull()
     expect(p.marketValue).toBeNull()
     expect(p.unrealizedPnl).toBeNull()
@@ -34,7 +34,7 @@ describe('presentación en moneda nativa', () => {
   const holdings = [{ assetId: 'a', ticker: 'ENELCHILE.SN', quantity: 244, costBasis: 19477, avgCost: 79.82 }]
 
   it('expone moneda y precio nativos junto al valor en base', () => {
-    const [p] = valuePositions(holdings, [{ ticker: 'ENELCHILE.SN', price: 80 }], new Map([
+    const [p] = valuePositions(holdings, [{ ticker: 'ENELCHILE.SN', price: 80 }], 'CLP', new Map([
       ['ENELCHILE.SN', { currency: 'CLP', price: 80 }],
     ]))
     expect(p.nativeCurrency).toBe('CLP')
@@ -42,8 +42,11 @@ describe('presentación en moneda nativa', () => {
     expect(p.marketValue).toBe(19520)
   })
 
-  it('sin mapa nativo, cae a la moneda base y al precio en base', () => {
-    const [p] = valuePositions(holdings, [{ ticker: 'ENELCHILE.SN', price: 80 }])
+  it('sin mapa nativo, la etiqueta es la moneda base — porque el precio también lo es', () => {
+    // `nativePrice` cae al precio EN BASE, así que `nativeCurrency` tiene que
+    // decir "base". Etiquetarlo con una moneda fija pondría un rótulo falso
+    // sobre un número ya convertido.
+    const [p] = valuePositions(holdings, [{ ticker: 'ENELCHILE.SN', price: 80 }], 'CLP')
     expect(p.nativeCurrency).toBe('CLP')
     expect(p.nativePrice).toBe(80)
   })
@@ -54,7 +57,8 @@ describe('portfolioTotals', () => {
     const quotes: Quote[] = [{ ticker: 'AAPL', price: 120 }]
     const positions = valuePositions(
       [holding(), holding({ assetId: 'a2', ticker: 'BTC', quantity: 1, costBasis: 50000, avgCost: 50000 })],
-      quotes
+      quotes,
+      'CLP'
     )
     const t = portfolioTotals(positions)
     expect(t.totalValue).toBe(1200)

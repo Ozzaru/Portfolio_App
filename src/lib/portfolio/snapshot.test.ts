@@ -8,9 +8,9 @@ const txs: Transaction[] = [
 
 describe('computeSnapshotValue', () => {
   it('valor total = cantidad × precio actual', () => {
-    expect(computeSnapshotValue(txs, [{ ticker: 'AAPL', price: 175 }])).toBe(1750)
+    expect(computeSnapshotValue(txs, [{ ticker: 'AAPL', price: 175 }], 'CLP')).toBe(1750)
   })
   it('un ticker sin precio aporta 0 al valor', () => {
-    expect(computeSnapshotValue(txs, [])).toBe(0)
+    expect(computeSnapshotValue(txs, [], 'CLP')).toBe(0)
   })
 })

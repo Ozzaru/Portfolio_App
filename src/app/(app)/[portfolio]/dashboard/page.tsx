@@ -1,6 +1,7 @@
 // src/app/(app)/dashboard/page.tsx
 'use client'
 
+import { useParams } from 'next/navigation'
 import { useResource } from '@/lib/hooks/use-resource'
 import {
   PieChart,
@@ -18,7 +19,6 @@ import {
 import { PeriodSelector } from '@/components/period-selector'
 import { usePeriod, useBenchmark } from '@/lib/hooks/use-prefs'
 import { formatMoney } from '@/lib/format/money'
-import { BASE_CURRENCY } from '@/lib/fx/constants'
 
 interface Position {
   assetId: string
@@ -32,6 +32,12 @@ interface Position {
   unrealizedPnlPct: number | null
   nativeCurrency: string
   nativePrice: number | null
+}
+
+interface PositionsResponse {
+  positions: Position[]
+  totals: Totals
+  baseCurrency: string
 }
 
 interface Totals {
@@ -51,8 +57,6 @@ interface SeriesPoint {
 
 const COLORS = ['#3b82f6', '#22c55e', '#f97316', '#818cf8', '#ec4899', '#14b8a6', '#eab308', '#f43f5e']
 
-const fmt = (n: number) => formatMoney(n, BASE_CURRENCY)
-
 function KpiCard({ label, value, accent }: { label: string; value: string; accent?: 'up' | 'down' }) {
   const color = accent === 'up' ? 'text-green-400' : accent === 'down' ? 'text-red-400' : 'text-slate-100'
   return (
@@ -64,6 +68,7 @@ function KpiCard({ label, value, accent }: { label: string; value: string; accen
 }
 
 export default function DashboardPage() {
+  const { portfolio } = useParams<{ portfolio: string }>()
   const [period, setPeriod] = usePeriod()
   const [benchmark] = useBenchmark()
 
@@ -71,14 +76,19 @@ export default function DashboardPage() {
   // la página de alertas, y `/api/analytics` con la de analítica usando LA MISMA
   // clave: navegar entre dashboard y analítica ya no repite la petición más cara
   // del sistema.
-  const { data: positionsData } = useResource<{ positions: Position[]; totals: Totals }>('/api/positions')
+  const { data: positionsData } = useResource<PositionsResponse>(`/api/positions?portfolio=${portfolio}`)
   const { data: analyticsData } = useResource<{ series: SeriesPoint[] }>(
-    `/api/analytics?period=${period}&benchmark=${benchmark}`
+    `/api/analytics?period=${period}&benchmark=${benchmark}&portfolio=${portfolio}`
   )
 
   const positions = positionsData?.positions ?? []
   const totals = positionsData?.totals ?? null
   const series = analyticsData?.series ?? []
+
+  // La moneda de medición la dicta el portafolio y viene en la respuesta; ya no
+  // es una constante del proyecto. `fmt` vive dentro del componente por eso.
+  const baseCurrency = positionsData?.baseCurrency ?? ''
+  const fmt = (n: number) => formatMoney(n, baseCurrency)
 
   const allocation = positions
     .filter((p) => p.marketValue !== null)
@@ -134,10 +144,10 @@ export default function DashboardPage() {
               <tr className="border-b border-slate-800 text-xs uppercase text-slate-500">
                 <th className="py-2">Ticker</th>
                 <th className="text-right">Cantidad</th>
-                <th className="text-right">Costo prom. ({BASE_CURRENCY})</th>
+                <th className="text-right">Costo prom. ({baseCurrency})</th>
                 <th className="text-right">Precio</th>
-                <th className="text-right">Valor ({BASE_CURRENCY})</th>
-                <th className="text-right">P&L ({BASE_CURRENCY})</th>
+                <th className="text-right">Valor ({baseCurrency})</th>
+                <th className="text-right">P&L ({baseCurrency})</th>
               </tr>
             </thead>
             <tbody>
