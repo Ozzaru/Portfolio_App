@@ -1,7 +1,8 @@
 // src/app/(app)/analytics/page.tsx
 'use client'
 
-import { useEffect, useState, type CSSProperties } from 'react'
+import { type CSSProperties } from 'react'
+import { useResource } from '@/lib/hooks/use-resource'
 import {
   LineChart,
   Line,
@@ -61,27 +62,12 @@ function corrStyle(v: number | null): CSSProperties {
 export default function AnalyticsPage() {
   const [period, setPeriod] = usePeriod()
   const [benchmark, setBenchmark] = useBenchmark()
-  const [data, setData] = useState<AnalyticsData | null>(null)
-  const [loadedKey, setLoadedKey] = useState<string>('')
-
-  const key = `${period}|${benchmark}`
-  useEffect(() => {
-    let active = true
-    fetch(`/api/analytics?period=${period}&benchmark=${benchmark}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (!active) return
-        setData(d)
-        setLoadedKey(key)
-      })
-    return () => {
-      active = false
-    }
-  }, [period, benchmark, key])
-
-  // loading derivado: la clave cargada aún no coincide con la actual (evita setState
-  // síncrono en el effect; ver regla react-hooks/set-state-in-effect).
-  const loading = loadedKey !== key
+  // Misma clave que usa el dashboard: venir de ahí sin cambiar período ni
+  // benchmark no repite la petición. El caché también reemplaza el baile de
+  // `loadedKey` que existía para derivar `loading` sin setState en el effect.
+  const { data, loading } = useResource<AnalyticsData>(
+    `/api/analytics?period=${period}&benchmark=${benchmark}`
+  )
   const s = data?.summary
   const hasSeries = (data?.series.length ?? 0) >= 2
 

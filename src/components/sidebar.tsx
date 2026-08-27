@@ -3,8 +3,8 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useResource } from '@/lib/hooks/use-resource'
 
 const links = [
   { href: '/dashboard', label: 'Dashboard' },
@@ -18,15 +18,12 @@ const links = [
 export default function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
-  const [triggered, setTriggered] = useState(0)
-
-  useEffect(() => {
-    fetch('/api/alerts')
-      .then((r) => (r.ok ? r.json() : { alerts: [] }))
-      .then((d: { alerts: { status: string }[] }) =>
-        setTriggered((d?.alerts ?? []).filter((a) => a.status === 'triggered').length)
-      )
-  }, [pathname])
+  // Antes esto se re-pedía en CADA navegación (`useEffect` con `[pathname]`),
+  // que era el desperdicio más caro del shell: una petición extra por cada click
+  // del nav. Ahora sale del caché compartido, y las mutaciones de alertas lo
+  // invalidan para que el badge siga siendo correcto.
+  const { data } = useResource<{ alerts: { status: string }[] }>('/api/alerts')
+  const triggered = (data?.alerts ?? []).filter((a) => a.status === 'triggered').length
 
   async function signOut() {
     const supabase = createClient()

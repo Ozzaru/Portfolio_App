@@ -1,7 +1,9 @@
 // src/app/(app)/alerts/page.tsx
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import { useResource } from '@/lib/hooks/use-resource'
+import { invalidateAfter } from '@/lib/cache/resources'
 import type { AlertType } from '@/lib/alerts/types'
 import { formatMoney } from '@/lib/format/money'
 
@@ -46,36 +48,37 @@ const STATUS_LABEL: Record<AlertView['status'], string> = {
 const money = (x: number | null, currency: string) => formatMoney(x, currency)
 
 export default function AlertsPage() {
-  const [assets, setAssets] = useState<Asset[]>([])
-  const [pricesByTicker, setPricesByTicker] = useState<Record<string, { price: number; currency: string }>>({})
-  const [alerts, setAlerts] = useState<AlertView[]>([])
   const [alertType, setAlertType] = useState<AlertType>('price_below')
   const [assetId, setAssetId] = useState('')
   const [threshold, setThreshold] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [banner, setBanner] = useState<string | null>(null)
 
-  const loadAll = useCallback(() => {
-    fetch('/api/assets')
-      .then((r) => (r.ok ? r.json() : []))
-      .then((d: Asset[]) => setAssets(d ?? []))
-    fetch('/api/positions')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d: { positions: Position[] } | null) => {
-        const map: Record<string, { price: number; currency: string }> = {}
-        for (const p of d?.positions ?? []) {
-          if (p.nativePrice != null) map[p.ticker] = { price: p.nativePrice, currency: p.nativeCurrency }
-        }
-        setPricesByTicker(map)
-      })
-    fetch('/api/alerts')
-      .then((r) => (r.ok ? r.json() : { alerts: [] }))
-      .then((d: { alerts: AlertView[] }) => setAlerts(d?.alerts ?? []))
-  }, [])
+  // Las tres lecturas salen del caché compartido. `/api/positions` la comparte
+  // con el dashboard y `/api/alerts` con el sidebar — y ese último se pide
+  // simultáneamente al montar, así que es el dedup en vuelo lo que evita el
+  // segundo viaje, no el caché de datos.
+  const { data: assetsData } = useResource<Asset[]>('/api/assets')
+  const { data: positionsData } = useResource<{ positions: Position[] }>('/api/positions')
+  const { data: alertsData } = useResource<{ alerts: AlertView[] }>('/api/alerts')
 
-  useEffect(() => {
-    loadAll()
-  }, [loadAll])
+  // Memoizado porque `currencyFor` lo lleva en sus dependencias: un `?? []`
+  // suelto devolvería un array nuevo en cada render y lo recrearía siempre.
+  const assets = useMemo(() => assetsData ?? [], [assetsData])
+  const alerts = alertsData?.alerts ?? []
+
+  const pricesByTicker = useMemo(() => {
+    const map: Record<string, { price: number; currency: string }> = {}
+    for (const p of positionsData?.positions ?? []) {
+      if (p.nativePrice != null) map[p.ticker] = { price: p.nativePrice, currency: p.nativeCurrency }
+    }
+    return map
+  }, [positionsData])
+
+  // Tras una mutación no hace falta recargar a mano: invalidar deja las claves
+  // sin dato y los consumidores montados —esta página y el badge del sidebar—
+  // vuelven a pedir, compartiendo un solo viaje.
+  const reload = useCallback(() => invalidateAfter('alerts'), [])
 
   // La moneda de un ticker sale de /api/assets (fuente de verdad: existe para
   // todo activo, vendido o no, tenga o no precio cacheado). `pricesByTicker`
@@ -100,7 +103,7 @@ export default function AlertsPage() {
       return
     }
     setThreshold('')
-    loadAll()
+    reload()
   }
 
   async function patchStatus(id: string, status: 'active' | 'disabled') {
@@ -109,7 +112,7 @@ export default function AlertsPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status }),
     })
-    loadAll()
+    reload()
   }
 
   function reactivate(a: AlertView) {
@@ -129,7 +132,7 @@ export default function AlertsPage() {
 
   async function remove(id: string) {
     await fetch(`/api/alerts/${id}`, { method: 'DELETE' })
-    loadAll()
+    reload()
   }
 
   async function evaluateNow() {
@@ -138,7 +141,7 @@ export default function AlertsPage() {
     const body = await res.json().catch(() => ({}))
     const n = res.ok ? (body.triggered?.length ?? 0) : 0
     setBanner(res.ok ? `Evaluación completada: ${n} alerta(s) disparada(s).` : 'la evaluación falló')
-    loadAll()
+    reload()
   }
 
   const unit = alertType === 'pct_change' ? '%' : 'precio'

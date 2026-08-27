@@ -1,7 +1,9 @@
 // src/app/(app)/portfolio/page.tsx
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
+import { useResource } from '@/lib/hooks/use-resource'
+import { invalidateAfter } from '@/lib/cache/resources'
 import { IVA_RATE } from '@/lib/fx/constants'
 
 interface Asset {
@@ -31,8 +33,6 @@ const btnCls =
   'rounded bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-500'
 
 export default function PortfolioPage() {
-  const [assets, setAssets] = useState<Asset[]>([])
-  const [txs, setTxs] = useState<Tx[]>([])
   const [error, setError] = useState<string | null>(null)
   const [txAssetId, setTxAssetId] = useState('')
   const [commission, setCommission] = useState('')
@@ -56,15 +56,15 @@ export default function PortfolioPage() {
     !ticker.trim().toUpperCase().endsWith('.SN') &&
     currencyValue.trim().toUpperCase() === 'CLP'
 
-  const load = useCallback(async () => {
-    const [aRes, tRes] = await Promise.all([fetch('/api/assets'), fetch('/api/transactions')])
-    if (aRes.ok) aRes.json().then(setAssets)
-    if (tRes.ok) tRes.json().then(setTxs)
-  }, [])
+  // `/api/assets` la comparte con la página de alertas. Una alta o baja acá
+  // ensucia además posiciones y analítica, así que `invalidateAfter('portfolio')`
+  // limpia las cuatro claves de una vez.
+  const { data: assetsData } = useResource<Asset[]>('/api/assets')
+  const { data: txsData } = useResource<Tx[]>('/api/transactions')
+  const assets = assetsData ?? []
+  const txs = txsData ?? []
 
-  useEffect(() => {
-    load()
-  }, [load])
+  const load = useCallback(() => invalidateAfter('portfolio'), [])
 
   async function post(url: string, body: unknown) {
     setError(null)
