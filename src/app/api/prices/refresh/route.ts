@@ -135,8 +135,14 @@ async function takeSnapshot(supabase: any, userId: string, quotes: { ticker: str
       return fxToday !== null ? [{ ticker: q.ticker, price: q.price * fxToday }] : []
     })
     totalValue = computeSnapshotValue(
-      transactionsToBaseCurrency(transactions, currencyByTicker, fxSeries),
-      baseQuotes
+      // Sigue siendo un snapshot CONSOLIDADO en pesos, deliberadamente: esta
+      // ruta es global (Fuentes de datos no está bajo un portafolio) y nadie lee
+      // la tabla `snapshots` todavía. La rebanada 4 la vuelve por portafolio,
+      // cuando exista quien la consuma. Hasta entonces `BASE_CURRENCY` acá es el
+      // comportamiento anterior explicitado, no una suposición nueva.
+      transactionsToBaseCurrency(transactions, currencyByTicker, fxSeries, BASE_CURRENCY),
+      baseQuotes,
+      BASE_CURRENCY
     )
   } catch (e) {
     console.error('snapshot: conversión a', BASE_CURRENCY, 'falló:', e instanceof Error ? e.message : e)

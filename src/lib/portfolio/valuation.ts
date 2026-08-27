@@ -1,6 +1,5 @@
 // src/lib/portfolio/valuation.ts
 import type { Holding } from '@/lib/portfolio/holdings'
-import { BASE_CURRENCY } from '@/lib/fx/constants'
 
 export interface Quote {
   ticker: string
@@ -33,9 +32,15 @@ export interface PortfolioTotals {
   assetCount: number
 }
 
+// `baseCurrency` es obligatorio porque `nativePrice` cae al precio EN BASE
+// cuando no hay cotización nativa: la etiqueta tiene que describir el número que
+// efectivamente se devuelve. Etiquetar con una moneda fija un valor que ya está
+// convertido sería una mentira silenciosa — la clase de bug que originó este
+// proyecto.
 export function valuePositions(
   holdings: Holding[],
   quotes: Quote[],
+  baseCurrency: string,
   native: Map<string, NativeQuote> = new Map()
 ): PositionView[] {
   const priceMap = new Map(quotes.map((q) => [q.ticker, q.price]))
@@ -52,7 +57,9 @@ export function valuePositions(
       marketValue,
       unrealizedPnl,
       unrealizedPnlPct,
-      nativeCurrency: n?.currency ?? BASE_CURRENCY,
+      // Sin cotización nativa se devuelve el precio en base, así que la
+      // etiqueta debe ser la moneda base — no un default fijo.
+      nativeCurrency: n?.currency ?? baseCurrency,
       nativePrice: n?.price ?? price,
     }
   })

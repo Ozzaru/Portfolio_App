@@ -2,7 +2,7 @@
 import { priceAsOf } from '@/lib/analytics/series'
 import type { PricePointAdj, PriceSeriesByTicker } from '@/lib/analytics/types'
 import type { Transaction } from '@/lib/portfolio/holdings'
-import { BASE_CURRENCY, FX_TICKER } from './constants'
+import { FX_TICKER } from './constants'
 
 // Tipo de cambio vigente en `date` con forward-fill: un feriado en Chile con
 // mercado abierto en EE.UU. usa el último FX publicado (Decisión 7).
@@ -21,14 +21,26 @@ export function fxAsOf(fxSeries: PricePointAdj[], date: string): number | null {
 //      convertir inyectaría un error de ~950x indetectable en un gráfico
 //      normalizado; descartar encoge la muestra de forma visible y conservadora,
 //      y respeta la regla 1 porque solo quita fechas.
+// `baseCurrency` es OBLIGATORIO y sin default a propósito. Un default sería la
+// misma trampa que originó el Proyecto 3: el IVA se aplicaba a operaciones en
+// dólares porque tenía un 19% silencioso que nadie revisaba. Si un llamador no
+// sabe en qué moneda está midiendo, tiene que detenerse a averiguarlo — no
+// heredar una suposición que convierte mal sin avisar.
 export function convertSeries(
   points: PricePointAdj[],
   currency: string,
-  fxSeries: PricePointAdj[]
+  fxSeries: PricePointAdj[],
+  baseCurrency: string
 ): PricePointAdj[] {
-  if (currency === BASE_CURRENCY) return points
-  if (currency !== 'USD') {
-    throw new Error(`moneda no soportada: ${currency} (solo USD y ${BASE_CURRENCY})`)
+  if (currency === baseCurrency) return points
+  // Solo existe el par USD → CLP. El portafolio internacional mide en USD y sus
+  // activos y benchmarks ya cotizan en USD, así que nunca necesita conversión;
+  // y los activos en pesos viven en el portafolio en pesos. Implementar la
+  // matemática inversa sin un caso de uso real es cómo se introducen errores
+  // silenciosos: si algún día hace falta, este throw lo dice con claridad en
+  // vez de dividir mal.
+  if (!(currency === 'USD' && baseCurrency === 'CLP')) {
+    throw new Error(`conversión no soportada: ${currency} → ${baseCurrency}`)
   }
   const out: PricePointAdj[] = []
   // Ambas series vienen ordenadas por fecha, así que se recorren con un cursor
@@ -66,11 +78,12 @@ export function convertSeries(
 export function toBaseCurrency(
   series: PriceSeriesByTicker,
   currencyByTicker: Map<string, string>,
-  fxSeries: PricePointAdj[]
+  fxSeries: PricePointAdj[],
+  baseCurrency: string
 ): PriceSeriesByTicker {
   const out: PriceSeriesByTicker = new Map()
   for (const [ticker, points] of series) {
-    out.set(ticker, convertSeries(points, currencyByTicker.get(ticker) ?? 'USD', fxSeries))
+    out.set(ticker, convertSeries(points, currencyByTicker.get(ticker) ?? 'USD', fxSeries, baseCurrency))
   }
   return out
 }
@@ -87,13 +100,14 @@ export function toBaseCurrency(
 export function transactionsToBaseCurrency(
   transactions: Transaction[],
   currencyByTicker: Map<string, string>,
-  fxSeries: PricePointAdj[]
+  fxSeries: PricePointAdj[],
+  baseCurrency: string
 ): Transaction[] {
   return transactions.map((tx) => {
     const currency = currencyByTicker.get(tx.ticker) ?? 'USD'
-    if (currency === BASE_CURRENCY) return tx
-    if (currency !== 'USD') {
-      throw new Error(`moneda no soportada: ${currency} (solo USD y ${BASE_CURRENCY})`)
+    if (currency === baseCurrency) return tx
+    if (!(currency === 'USD' && baseCurrency === 'CLP')) {
+      throw new Error(`conversión no soportada: ${currency} → ${baseCurrency}`)
     }
     const rate = fxAsOf(fxSeries, tx.executedAt)
     if (rate === null) {

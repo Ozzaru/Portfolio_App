@@ -30,8 +30,8 @@ describe('protección de calendario tras convertir a CLP', () => {
     ]
 
     const result = computeAnalytics({
-      transactions: transactionsToBaseCurrency(transactions, currencies, fxSeries),
-      priceSeries: toBaseCurrency(series, currencies, fxSeries),
+      transactions: transactionsToBaseCurrency(transactions, currencies, fxSeries, 'CLP'),
+      priceSeries: toBaseCurrency(series, currencies, fxSeries, 'CLP'),
       benchmarkSeries: null,
       benchmarkTicker: 'SPY',
       assetTypeByTicker: new Map([
@@ -59,7 +59,8 @@ describe('protección de calendario tras convertir a CLP', () => {
         ['AAPL', 'USD'],
         ['ENELCHILE.SN', 'CLP'],
       ]),
-      fxSeries
+      fxSeries,
+      'CLP'
     )
     expect(out.get('AAPL')!.map((p) => p.date)).toEqual(['2026-01-05', '2026-01-06'])
     expect(out.get('ENELCHILE.SN')!.map((p) => p.date)).toEqual(['2026-01-05'])

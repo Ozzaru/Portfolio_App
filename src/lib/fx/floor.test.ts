@@ -26,13 +26,13 @@ describe('convertSeries — el comportamiento que hace necesario el piso', () =>
     const fx = [{ date: '2026-01-14', price: 950, adjPrice: 950 }]
     // No es un bug de convertSeries: sin tipo de cambio, dejar pasar el punto
     // sin convertir inyectaría un error de ~950x. Descartar es lo correcto.
-    expect(convertSeries(bench, 'USD', fx)).toEqual([])
+    expect(convertSeries(bench, 'USD', fx, 'CLP')).toEqual([])
   })
 
   it('los conserva cuando el FX empieza antes', () => {
     const bench = [{ date: '2025-12-31', price: 400, adjPrice: 400 }]
     const fx = [{ date: '2025-12-30', price: 950, adjPrice: 950 }]
-    expect(convertSeries(bench, 'USD', fx)).toHaveLength(1)
+    expect(convertSeries(bench, 'USD', fx, 'CLP')).toHaveLength(1)
   })
 })
 
