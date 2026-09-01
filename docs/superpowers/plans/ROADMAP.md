@@ -25,9 +25,10 @@ Cada proyecto lleva su propio spec y plan, igual que las fases.
 |------|----------|---------|--------|
 | 1 | [Limpieza](2026-08-19-limpieza-backtest-escenarios.md) ([spec](../specs/2026-08-19-limpieza-backtest-escenarios-design.md)) | Eliminar Backtest y Escenarios; rescatar el simulador de carteras y el cálculo de beta hacia `analytics/` | **Implementada** |
 | 2 | Performance | Filtrar `price_cache` por ticker en `/api/positions`, Server Components, caché entre navegaciones | **Pendiente** |
-| 3 | Portafolios CLP / USD | Separar la medición por moneda en vez de consolidar todo en CLP | **Pendiente** |
+| 3 | Portafolios CLP / USD | Separar la medición por moneda en vez de consolidar todo en CLP. Migraciones 0006 (fase 1), 0007 (slug) y 0008 (cierre: `NOT NULL`, trigger anti-IVA internacional, snapshots por portafolio) | **Implementada** |
+| 3.1 | Contabilidad de caja ([spec](../specs/2026-08-31-proyecto-3-1-contabilidad-de-caja-design.md)) | Saldo líquido real por portafolio: `cash_movements` y `fx_transfers` como hechos, `cash_ledger` como proyección (sin triggers ni tablas duplicadas), reconstrucción del histórico desde junio, el efectivo entra en `total_value` y los flujos externos dejan de inferirse de las compras | **Pendiente** |
 | 4 | Dashboard: multi-benchmark | Selector de benchmark en el dashboard, comparación simultánea (S&P 500, Nasdaq 100, buy & hold, equiponderado), fechas en dd/mm/aaaa | **Pendiente** |
 | 5 | Deploy web + responsive | Publicar la app con acceso desde celular y PC; layout adaptable | **Pendiente** |
 | 6 | Configuración + alertas automáticas | Poblar `/settings`; evaluación de alertas por cron sin intervención manual | **Pendiente** |
 
-**Dependencias:** 4 depende de 1 (usa `analytics/synthetic/` y `analytics/beta.ts`) y de 3 (el benchmark se elige por portafolio) · 6 depende de 5 (el cron necesita un endpoint público al que pegarle).
+**Dependencias:** 3.1 depende de 3 (la caja es por portafolio) · 4 depende de 1 (usa `analytics/synthetic/` y `analytics/beta.ts`) y de 3 (el benchmark se elige por portafolio) · 6 depende de 5 (el cron necesita un endpoint público al que pegarle).
