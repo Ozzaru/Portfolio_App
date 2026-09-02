@@ -178,6 +178,28 @@ describe('cashMovementInputSchema', () => {
       }).success
     ).toBe(false)
   })
+
+  it('el tipo sobrevive al transform: la ruta lo necesita para movement_type', () => {
+    const r = cashMovementInputSchema.parse({
+      movementType: 'withdrawal', amount: 100, currency: 'CLP', occurredAt: '2026-06-10',
+    })
+    expect(r.movementType).toBe('withdrawal')
+  })
+
+  it('flatten() sigue dando errores por campo pese al transform de objeto', () => {
+    // Las rutas devuelven `parsed.error.flatten()` en el 400. Un transform a nivel
+    // de objeto podría colapsar eso en un error de formulario sin campo.
+    const bad = cashMovementInputSchema.safeParse({
+      movementType: 'deposit', amount: -1, currency: 'XX', occurredAt: 'ayer',
+    })
+    expect(bad.success).toBe(false)
+    if (!bad.success) {
+      const flat = bad.error.flatten()
+      expect(Object.keys(flat.fieldErrors)).toEqual(
+        expect.arrayContaining(['amount', 'currency', 'occurredAt']),
+      )
+    }
+  })
 })
 
 describe('fxTransferInputSchema', () => {

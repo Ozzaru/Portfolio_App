@@ -82,7 +82,7 @@ export type CashMovementInput = z.infer<typeof cashMovementInputSchema>
 // body: es el del contexto (`?portfolio=`), igual que en todas las demás rutas.
 //
 // No hay campo de tasa: `fromAmount / toAmount` la da exacta, y una tercera
-// columna podría contradecir a las otras dos.
+// columna podría contradecir a las otras dos (Decisión 5 del spec).
 export const fxTransferInputSchema = z.object({
   toPortfolioId: z.string().uuid(),
   fromCurrency: z
