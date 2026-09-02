@@ -17,9 +17,14 @@ export async function GET(request: Request) {
 
   const { data, error } = await supabase
     .from('cash_movements')
-    .select('id, currency, movement_type, amount, occurred_at, note')
+    .select('id, currency, movement_type, amount, occurred_at, note, created_at')
     .eq('portfolio_id', ctx.id)
+    // `occurred_at` es un date: dos movimientos del mismo día empatan y Postgres
+    // puede devolverlos en cualquier orden, reordenando la lista entre renders.
+    // Al digitar una cartola se cargan varios abonos con la misma fecha, así que
+    // el empate es el caso normal, no el raro.
     .order('occurred_at', { ascending: false })
+    .order('created_at', { ascending: false })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
 }
