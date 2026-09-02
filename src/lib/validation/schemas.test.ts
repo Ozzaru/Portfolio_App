@@ -167,6 +167,17 @@ describe('cashMovementInputSchema', () => {
       }).success
     ).toBe(false)
   })
+
+  it('rechaza una fecha con forma válida pero que no existe en el calendario', () => {
+    // El regex anterior sólo miraba la forma: 2026-02-30 pasaba la validación y
+    // moría en Postgres como un 500 opaco, que es justo lo que estos schemas
+    // existen para evitar.
+    expect(
+      cashMovementInputSchema.safeParse({
+        movementType: 'deposit', amount: 100, currency: 'CLP', occurredAt: '2026-02-30',
+      }).success
+    ).toBe(false)
+  })
 })
 
 describe('fxTransferInputSchema', () => {

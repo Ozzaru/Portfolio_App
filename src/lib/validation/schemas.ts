@@ -1,8 +1,6 @@
 // src/lib/validation/schemas.ts
 import { z } from 'zod'
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
-
 export const assetInputSchema = z.object({
   ticker: z
     .string()
@@ -32,7 +30,7 @@ export const transactionInputSchema = z.object({
   price: z.coerce.number().nonnegative(),
   commission: z.coerce.number().nonnegative().default(0),
   iva: z.coerce.number().nonnegative().default(0),
-  executedAt: z.string().regex(DATE_RE, 'formato esperado YYYY-MM-DD'),
+  executedAt: z.iso.date('formato esperado YYYY-MM-DD'),
 })
 export type TransactionInput = z.infer<typeof transactionInputSchema>
 
@@ -44,7 +42,7 @@ export const priceInputSchema = z.object({
     .max(20)
     .transform((t) => t.toUpperCase()),
   price: z.coerce.number().positive(),
-  priceDate: z.string().regex(DATE_RE, 'formato esperado YYYY-MM-DD'),
+  priceDate: z.iso.date('formato esperado YYYY-MM-DD'),
 })
 export type PriceInput = z.infer<typeof priceInputSchema>
 
@@ -71,7 +69,7 @@ export const cashMovementInputSchema = z
       .trim()
       .length(3)
       .transform((c) => c.toUpperCase()),
-    occurredAt: z.string().regex(DATE_RE, 'formato esperado YYYY-MM-DD'),
+    occurredAt: z.iso.date('formato esperado YYYY-MM-DD'),
     note: z.string().trim().max(200).default(''),
   })
   .transform((m) => ({
@@ -99,7 +97,7 @@ export const fxTransferInputSchema = z.object({
     .length(3)
     .transform((c) => c.toUpperCase()),
   toAmount: z.coerce.number().positive(),
-  occurredAt: z.string().regex(DATE_RE, 'formato esperado YYYY-MM-DD'),
+  occurredAt: z.iso.date('formato esperado YYYY-MM-DD'),
   note: z.string().trim().max(200).default(''),
 })
 export type FxTransferInput = z.infer<typeof fxTransferInputSchema>
