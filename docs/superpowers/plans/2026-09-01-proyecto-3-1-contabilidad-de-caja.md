@@ -608,9 +608,16 @@ En `src/lib/cache/resources.ts`, dentro del objeto `INVALIDATES`, después de la
 ```ts
   // Abono, retiro o conversión. El prefijo `/api/cash` alcanza de una vez a
   // movements, transfers y balances. Ensucia además posiciones y analítica: el
-  // efectivo entra en el patrimonio y los movimientos externos son los flujos
-  // con los que se calcula el P&L absoluto.
+  // efectivo entra en el patrimonio (desde la Tarea 10) y los movimientos
+  // externos son los flujos con los que se calcula el P&L absoluto (desde la
+  // Tarea 15). Se declara la arista ahora, no cuando se empiece a usar.
   cash: ['/api/cash', '/api/positions', '/api/analytics'],
+
+  // Y al revés: `portfolio` gana `/api/cash` porque la pata de caja del trade se
+  // PROYECTA desde la transacción (0009 §3.2). Escribir una transacción cambia
+  // el saldo sin tocar ninguna tabla de caja, así que sin esto una compra deja
+  // el saldo viejo en pantalla junto al patrimonio nuevo. La flecha va en un
+  // solo sentido: un movimiento de caja NO ensucia transacciones ni activos.
 ```
 
 - [ ] **Step 4: Correr el test y verificar que pasa**
@@ -645,7 +652,7 @@ export async function GET(request: Request) {
 
   const { data, error } = await supabase
     .from('cash_balances')
-    .select('currency, balance, last_movement_at')
+    .select('currency, balance')
     .eq('portfolio_id', ctx.id)
     .order('currency')
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -654,7 +661,6 @@ export async function GET(request: Request) {
     (data ?? []).map((r) => ({
       currency: r.currency as string,
       balance: Number(r.balance),
-      lastMovementAt: r.last_movement_at as string | null,
     }))
   )
 }
@@ -705,7 +711,6 @@ import { formatMoney } from '@/lib/format/money'
 interface Balance {
   currency: string
   balance: number
-  lastMovementAt: string | null
 }
 
 interface Movement {
@@ -1060,7 +1065,8 @@ Comprobar:
 5. Borrar la conversión: desaparece de ambos portafolios y los dos saldos vuelven atrás.
 6. **Doble click rápido en "Registrar movimiento": debe crear UN solo abono, no dos.** Es la comprobación que más importa de esta lista — un abono duplicado no infla ninguna posición ni rompe ninguna cuenta, sólo deja el saldo mal en silencio.
 7. En `/internacional/portfolio`, el selector de moneda debe venir en **USD**, no en CLP.
-8. Borrar el abono de prueba.
+8. **Registrar una COMPRA en el formulario de Transacciones: la tarjeta de saldo tiene que moverse sola, sin recargar la página.** Es la única prueba en runtime de que `INVALIDATES.portfolio` alcanza a `/api/cash` — la pata de caja del trade se proyecta desde la transacción, así que el saldo cambia sin que se toque ninguna tabla de caja. El proyecto no tiene tests de componentes, así que esta comprobación manual es la única red que existe para esa arista.
+9. Borrar la compra y el abono de prueba.
 
 - [ ] **Step 5: Commit**
 
