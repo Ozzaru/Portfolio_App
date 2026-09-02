@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation'
 import { useResource } from '@/lib/hooks/use-resource'
 import { invalidateAfter } from '@/lib/cache/resources'
 import { IVA_RATE } from '@/lib/fx/constants'
+import { CashSection } from '@/components/cash-section'
 
 interface Asset {
   id: string
@@ -326,6 +327,8 @@ export default function PortfolioPage() {
           </tbody>
         </table>
       </section>
+
+      <CashSection portfolio={portfolio} />
     </div>
   )
 }
