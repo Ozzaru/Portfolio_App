@@ -728,6 +728,7 @@ const btnCls = 'rounded bg-blue-600 px-3 py-2 text-sm font-semibold text-white h
 
 export function CashSection({ portfolio }: { portfolio: string }) {
   const [error, setError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
 
   const { data: balancesData } = useResource<Balance[]>(`/api/cash/balances?portfolio=${portfolio}`)
   const { data: movementsData } = useResource<Movement[]>(`/api/cash/movements?portfolio=${portfolio}`)
@@ -743,20 +744,35 @@ export function CashSection({ portfolio }: { portfolio: string }) {
   const others = portfolios.filter((p) => p.slug !== portfolio)
   const baseCurrency = current?.baseCurrency ?? ''
 
+  // La guarda de envío en vuelo NO es cosmética acá. Un doble click en "Registrar
+  // movimiento" crea dos abonos idénticos, y un abono duplicado es INDISTINGUIBLE
+  // de uno real: no infla ninguna posición, no rompe ninguna cuenta, sólo deja el
+  // saldo silenciosamente mal. Un trade duplicado al menos se ve como una posición
+  // del doble de tamaño. Es exactamente el "cálculo que se ve bien y miente" que
+  // este proyecto vino a cerrar.
+  //
+  // No hay unique en la base a propósito: dos abonos reales de $50.000 el mismo
+  // día son legítimos. La recuperación es borrar el sobrante desde el libro.
   async function post(url: string, body: unknown) {
+    if (submitting) return false
+    setSubmitting(true)
     setError(null)
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    if (!res.ok) {
-      const data = await res.json().catch(() => null)
-      setError(typeof data?.error === 'string' ? data.error : 'Error de validación')
-      return false
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        setError(typeof data?.error === 'string' ? data.error : 'Error de validación')
+        return false
+      }
+      invalidateAfter('cash')
+      return true
+    } finally {
+      setSubmitting(false)
     }
-    invalidateAfter('cash')
-    return true
   }
 
   async function remove(url: string) {
@@ -825,16 +841,29 @@ export function CashSection({ portfolio }: { portfolio: string }) {
           required
           className={inputCls}
         />
-        <input
+        {/* `<select>` y no texto libre. `cash_movements.currency` es libre a
+            propósito en el esquema, pero un typo tipo `CPL` crearía un bucket
+            fantasma permanente en `cash_balances` —que agrupa por moneda— y
+            sólo se podría borrar con SQL a mano. Las opciones salen de las
+            monedas base que el usuario realmente tiene. */}
+        {/* `key` no es decoración: `defaultValue` sólo se aplica en el primer
+            render, y `baseCurrency` llega asíncrono desde /api/portfolios. Sin
+            el remonte, el select se quedaría en la primera opción de la lista
+            —CLP— aunque estuvieras en el portafolio internacional. */}
+        <select
+          key={baseCurrency}
           name="currency"
-          maxLength={3}
-          placeholder={`Moneda (${baseCurrency || 'CLP'})`}
-          defaultValue={baseCurrency}
+          required
           className={inputCls}
-        />
+          defaultValue={baseCurrency}
+        >
+          {[...new Set(portfolios.map((p) => p.baseCurrency))].map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
         <input name="occurredAt" type="date" required className={inputCls} />
         <input name="note" placeholder="Nota (opcional)" className={inputCls} />
-        <button type="submit" className={btnCls}>Registrar movimiento</button>
+        <button type="submit" disabled={submitting} className={btnCls}>Registrar movimiento</button>
       </form>
 
       {/* Conversión. Sólo tiene sentido si hay a dónde mandar la plata. */}
@@ -885,7 +914,7 @@ export function CashSection({ portfolio }: { portfolio: string }) {
           />
           <input name="occurredAt" type="date" required className={inputCls} />
           <input name="note" placeholder="Nota (opcional)" className={inputCls} />
-          <button type="submit" className={btnCls}>Registrar conversión</button>
+          <button type="submit" disabled={submitting} className={btnCls}>Registrar conversión</button>
         </form>
       )}
 
@@ -1013,7 +1042,9 @@ Comprobar:
 3. Registrar una conversión hacia el internacional: aparece en la tabla con su tasa y su costo de spread.
 4. Abrir `/internacional/portfolio`: la misma conversión aparece también ahí (es de los dos portafolios).
 5. Borrar la conversión: desaparece de ambos portafolios y los dos saldos vuelven atrás.
-6. Borrar el abono de prueba.
+6. **Doble click rápido en "Registrar movimiento": debe crear UN solo abono, no dos.** Es la comprobación que más importa de esta lista — un abono duplicado no infla ninguna posición ni rompe ninguna cuenta, sólo deja el saldo mal en silencio.
+7. En `/internacional/portfolio`, el selector de moneda debe venir en **USD**, no en CLP.
+8. Borrar el abono de prueba.
 
 - [ ] **Step 5: Commit**
 
