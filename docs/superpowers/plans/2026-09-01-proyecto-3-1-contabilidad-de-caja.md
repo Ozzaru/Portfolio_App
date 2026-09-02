@@ -75,7 +75,8 @@ fx_transfers_audit (vista) → columnas de fx_transfers + clp_por_usd, clp_por_u
 | `src/app/api/cash/transfers/[id]/route.ts` | DELETE de un traspaso — se lleva sus dos patas |
 | `src/app/api/cash/balances/route.ts` | GET de saldos por moneda; sin lógica, lee la vista |
 | `src/components/cash-section.tsx` | Sección de efectivo: saldos, formularios de abono/retiro y conversión, y el libro |
-| `supabase/migrations/0010_snapshots_incluyen_caja.sql` | Columna `includes_cash` + backfill del histórico |
+| `supabase/migrations/0010_fx_audit_created_at.sql` | Proyecta `created_at` en `fx_transfers_audit`, para desempatar el orden de traspasos del mismo día |
+| `supabase/migrations/0011_snapshots_incluyen_caja.sql` | Columna `includes_cash` + backfill del histórico |
 
 ### Se modifica
 
@@ -418,6 +419,9 @@ El GET lee `fx_transfers_audit` en vez de `fx_transfers`: trae las mismas column
 **Files:**
 - Create: `src/app/api/cash/transfers/route.ts`
 - Create: `src/app/api/cash/transfers/[id]/route.ts`
+- Create: `supabase/migrations/0010_fx_audit_created_at.sql`
+
+> **Acoplamiento de despliegue.** El GET selecciona `created_at`, columna que `fx_transfers_audit` no proyectaba en la 0009. **La migración 0010 tiene que aplicarse antes de que este código corra**, o la consulta falla. Es la única rebanada del proyecto con esta dependencia; la 0009 y la 0011 son aditivas y se pueden aplicar en cualquier momento.
 
 - [ ] **Step 1: Crear `src/app/api/cash/transfers/route.ts`**
 
@@ -448,8 +452,16 @@ export async function GET(request: Request) {
       'id, from_portfolio_id, from_currency, from_amount, to_portfolio_id, to_currency, to_amount, ' +
         'occurred_at, note, clp_por_usd, clp_por_usd_mercado, costo_spread_clp'
     )
+    // `ctx.id` se lee de una columna uuid, nunca lo manda el llamante: no puede
+    // contener las comas ni los puntos que reestructurarían este filtro. Queda
+    // anotado acá para que nadie copie el patrón a un valor que sí venga del
+    // cliente.
     .or(`from_portfolio_id.eq.${ctx.id},to_portfolio_id.eq.${ctx.id}`)
+    // `occurred_at` es un date: dos traspasos del mismo día empatan y el orden
+    // se reordena entre renders. Mismo desempate que en movements. Requiere la
+    // migración 0010, que proyecta `created_at` en la vista.
     .order('occurred_at', { ascending: false })
+    .order('created_at', { ascending: false })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
 }
@@ -474,11 +486,15 @@ export async function POST(request: Request) {
   // La RLS ya rechazaría un destino ajeno, pero con un error de política que no
   // dice nada útil. Comprobarlo antes convierte eso en un 404 explícito. La RLS
   // filtra la lectura, así que "no aparece" equivale a "no es tuyo".
-  const { data: dest } = await supabase
+  const { data: dest, error: destError } = await supabase
     .from('portfolios')
     .select('id')
     .eq('id', toPortfolioId)
     .maybeSingle()
+  // Distinguir el fallo de infraestructura del "no existe": sin esto, una caída
+  // de la base se reporta como "portafolio destino no encontrado" y manda al
+  // usuario a buscar el problema equivocado.
+  if (destError) return NextResponse.json({ error: destError.message }, { status: 500 })
   if (!dest) return NextResponse.json({ error: 'Portafolio destino no encontrado' }, { status: 404 })
 
   // El CHECK `fx_transfers_no_es_no_op` ya lo rechaza, pero como un 500 opaco.
@@ -1098,17 +1114,17 @@ Anotar en el PR o en un comentario el saldo final de cada portafolio y confirmar
 
 # Rebanada 4 — El histórico de snapshots
 
-## Task 7: Migración 0010 — los snapshots incluyen la caja
+## Task 7: Migración 0011 — los snapshots incluyen la caja
 
 Va **antes** de que el escritor cambie (Tarea 11), no después. Con el escritor viejo todavía en producción, cada fila de `snapshots` está en un estado conocido —sin caja— y el backfill las cubre todas de una vez. Al revés habría filas nuevas ya con caja mezcladas con filas viejas sin ella, y distinguirlas dependería de la fecha de despliegue.
 
 **Files:**
-- Create: `supabase/migrations/0010_snapshots_incluyen_caja.sql`
+- Create: `supabase/migrations/0011_snapshots_incluyen_caja.sql`
 
 - [ ] **Step 1: Escribir la migración**
 
 ```sql
--- supabase/migrations/0010_snapshots_incluyen_caja.sql
+-- supabase/migrations/0011_snapshots_incluyen_caja.sql
 -- Proyecto 3.1, rebanada 4 — el histórico de patrimonio incluye el efectivo.
 -- Ejecutar COMPLETO en el SQL Editor de Supabase.
 --
@@ -1237,8 +1253,8 @@ Expected: `todas_con_caja = true` para cada portafolio, y el `UPDATE` de prueba 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add supabase/migrations/0010_snapshots_incluyen_caja.sql
-git commit -m "feat(db): los snapshots historicos incluyen la caja (migracion 0010)
+git add supabase/migrations/0011_snapshots_incluyen_caja.sql
+git commit -m "feat(db): los snapshots historicos incluyen la caja (migracion 0011)
 
 Va antes del escritor nuevo, no despues: mientras el viejo siga corriendo toda
 fila esta en el mismo estado y el backfill las cubre de una vez.
@@ -1635,7 +1651,7 @@ En el `upsert` de snapshots, añadir el campo:
       snapshot_date: today,
       total_value: totalValue,
       currency: base,
-      // La 0010 dejó el histórico marcado; desde acá toda fila nueva nace
+      // La 0011 dejó el histórico marcado; desde acá toda fila nueva nace
       // con el patrimonio completo.
       includes_cash: true,
     },
