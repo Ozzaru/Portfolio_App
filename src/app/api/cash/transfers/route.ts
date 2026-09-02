@@ -22,14 +22,26 @@ export async function GET(request: Request) {
   // Se lee la vista de auditoría y no la tabla cruda: la tasa efectiva y el
   // costo del spread ya los calcula la base, y recalcularlos en el cliente
   // sería una segunda definición del mismo número.
+  //
+  // `ctx.id` no lo manda el llamador: sale de `resolvePortfolio`, que lo lee
+  // de la columna `uuid` del portafolio resuelto por slug. Por eso es seguro
+  // interpolarlo en la expresión de `.or()` sin escapar — no puede traer una
+  // coma o un punto que reestructure el filtro. Este mismo patrón NO es seguro
+  // con un valor que sí venga del caller.
   const { data, error } = await supabase
     .from('fx_transfers_audit')
     .select(
       'id, from_portfolio_id, from_currency, from_amount, to_portfolio_id, to_currency, to_amount, ' +
-        'occurred_at, note, clp_por_usd, clp_por_usd_mercado, costo_spread_clp'
+        'occurred_at, note, clp_por_usd, clp_por_usd_mercado, costo_spread_clp, created_at'
     )
     .or(`from_portfolio_id.eq.${ctx.id},to_portfolio_id.eq.${ctx.id}`)
+    // `occurred_at` es un date: dos traspasos del mismo día empatan y Postgres
+    // puede devolverlos en cualquier orden, reordenando la lista entre renders.
+    // La reconstrucción histórica carga varias conversiones con la misma
+    // fecha, así que el empate es el caso normal, no el raro. Mismo desempate
+    // que `cash/movements/route.ts`.
     .order('occurred_at', { ascending: false })
+    .order('created_at', { ascending: false })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
 }
@@ -54,11 +66,15 @@ export async function POST(request: Request) {
   // La RLS ya rechazaría un destino ajeno, pero con un error de política que no
   // dice nada útil. Comprobarlo antes convierte eso en un 404 explícito. La RLS
   // filtra la lectura, así que "no aparece" equivale a "no es tuyo".
-  const { data: dest } = await supabase
+  const { data: dest, error: destError } = await supabase
     .from('portfolios')
     .select('id')
     .eq('id', toPortfolioId)
     .maybeSingle()
+  // Distinguir el fallo de infraestructura del "no existe": sin esto, una caida
+  // de la base se reporta como "portafolio destino no encontrado" y manda al
+  // usuario a buscar el problema equivocado.
+  if (destError) return NextResponse.json({ error: destError.message }, { status: 500 })
   if (!dest) return NextResponse.json({ error: 'Portafolio destino no encontrado' }, { status: 404 })
 
   // El CHECK `fx_transfers_no_es_no_op` ya lo rechaza, pero como un 500 opaco.
