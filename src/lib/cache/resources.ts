@@ -27,6 +27,12 @@ export const INVALIDATES = {
   // Alta o baja de un activo o una transacción: cambia holdings, y con ellos
   // todo lo que se derive de la cartera.
   portfolio: ['/api/positions', '/api/analytics', '/api/transactions', '/api/assets'],
+
+  // Abono, retiro o conversión. El prefijo `/api/cash` alcanza de una vez a
+  // movements, transfers y balances. Ensucia además posiciones y analítica: el
+  // efectivo entra en el patrimonio y los movimientos externos son los flujos
+  // con los que se calcula el P&L absoluto.
+  cash: ['/api/cash', '/api/positions', '/api/analytics'],
 } as const
 
 export type MutationKind = keyof typeof INVALIDATES

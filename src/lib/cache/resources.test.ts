@@ -31,6 +31,16 @@ describe('INVALIDATES', () => {
     expect(INVALIDATES.alerts).not.toContain('/api/positions')
     expect(INVALIDATES.alerts).not.toContain('/api/analytics')
   })
+
+  it('un movimiento de caja ensucia el libro, las posiciones y la analítica', () => {
+    // No es sólo el libro: el efectivo entra en `total_value` (posiciones) y los
+    // abonos/retiros son los flujos externos con los que la analítica calcula el
+    // P&L absoluto. Dejar esas dos fuera mostraría un saldo nuevo junto a un
+    // patrimonio viejo.
+    expect(INVALIDATES.cash).toEqual(
+      expect.arrayContaining(['/api/cash', '/api/positions', '/api/analytics']),
+    )
+  })
 })
 
 describe('invalidador sobre un store real', () => {
