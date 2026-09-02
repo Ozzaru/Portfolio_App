@@ -236,7 +236,7 @@ export const cashMovementInputSchema = z
       .trim()
       .length(3)
       .transform((c) => c.toUpperCase()),
-    occurredAt: z.string().regex(DATE_RE, 'formato esperado YYYY-MM-DD'),
+    occurredAt: z.iso.date('formato esperado YYYY-MM-DD'),
     note: z.string().trim().max(200).default(''),
   })
   .transform((m) => ({
@@ -264,16 +264,18 @@ export const fxTransferInputSchema = z.object({
     .length(3)
     .transform((c) => c.toUpperCase()),
   toAmount: z.coerce.number().positive(),
-  occurredAt: z.string().regex(DATE_RE, 'formato esperado YYYY-MM-DD'),
+  occurredAt: z.iso.date('formato esperado YYYY-MM-DD'),
   note: z.string().trim().max(200).default(''),
 })
 export type FxTransferInput = z.infer<typeof fxTransferInputSchema>
 ```
 
+**Nota añadida tras la revisión de código de la Tarea 1:** `z.iso.date()` en vez del `DATE_RE` que este plan prescribía originalmente. El regex `/^\d{4}-\d{2}-\d{2}$/` valida la FORMA pero no el calendario: `2026-02-30` lo pasaba y moría en Postgres como un 500 opaco — justo el fallo que estos schemas existen para evitar. El cambio se aplicó a los cinco usos del archivo y `DATE_RE` se eliminó, para no dejar dos idiomas de validación de fecha conviviendo.
+
 - [ ] **Step 4: Correr los tests y verificar que pasan**
 
 Run: `npm test`
-Expected: **32 archivos, 235 tests, todos verdes** (227 + 8 nuevos).
+Expected: **32 archivos, 238 tests, todos verdes** (227 + 8 de los schemas + 3 añadidos tras la revisión de código: validez de calendario, supervivencia de `movementType` al transform, y forma de `flatten()`).
 
 - [ ] **Step 5: Commit**
 
@@ -396,7 +398,7 @@ Run: `npm run build`
 Expected: build exitoso, sin errores de tipos.
 
 Run: `npm test`
-Expected: 32 archivos, 235 tests, verdes (sin cambios respecto a la Tarea 1).
+Expected: 32 archivos, 238 tests, verdes (sin cambios respecto a la Tarea 1).
 
 - [ ] **Step 4: Commit**
 
@@ -478,6 +480,16 @@ export async function POST(request: Request) {
     .eq('id', toPortfolioId)
     .maybeSingle()
   if (!dest) return NextResponse.json({ error: 'Portafolio destino no encontrado' }, { status: 404 })
+
+  // El CHECK `fx_transfers_no_es_no_op` ya lo rechaza, pero como un 500 opaco.
+  // El origen no viaja en el body —es el del contexto—, así que el schema no
+  // puede detectarlo solo: la comprobación tiene que vivir acá.
+  if (toPortfolioId === ctx.id && toCurrency === fromCurrency) {
+    return NextResponse.json(
+      { error: 'Origen y destino son la misma cuenta en la misma moneda' },
+      { status: 400 }
+    )
+  }
 
   const { data, error } = await supabase
     .from('fx_transfers')
@@ -588,7 +600,7 @@ En `src/lib/cache/resources.ts`, dentro del objeto `INVALIDATES`, después de la
 - [ ] **Step 4: Correr el test y verificar que pasa**
 
 Run: `npm test`
-Expected: **32 archivos, 236 tests, verdes.**
+Expected: **32 archivos, 239 tests, verdes.**
 
 - [ ] **Step 5: Crear `src/app/api/cash/balances/route.ts`**
 
@@ -989,7 +1001,7 @@ Run: `npm run lint`
 Expected: sin errores.
 
 Run: `npm test`
-Expected: 32 archivos, 236 tests, verdes.
+Expected: 32 archivos, 239 tests, verdes.
 
 - [ ] **Step 4: Verificar a mano en el navegador**
 
@@ -1315,7 +1327,7 @@ export function portfolioTotals(positions: PositionView[], cashBalance = 0): Por
 - [ ] **Step 4: Correr los tests y verificar que pasan**
 
 Run: `npm test`
-Expected: **32 archivos, 239 tests, verdes.** Los tests viejos de `portfolioTotals` siguen pasando sin cambios porque el default de `cashBalance` es 0.
+Expected: **32 archivos, 242 tests, verdes.** Los tests viejos de `portfolioTotals` siguen pasando sin cambios porque el default de `cashBalance` es 0.
 
 - [ ] **Step 5: Commit**
 
@@ -1385,7 +1397,7 @@ export function computeSnapshotValue(
 - [ ] **Step 4: Correr el test y verificar que pasa**
 
 Run: `npm test`
-Expected: **32 archivos, 241 tests, verdes.**
+Expected: **32 archivos, 244 tests, verdes.**
 
 - [ ] **Step 5: Commit**
 
@@ -1488,7 +1500,7 @@ Run: `npm run build`
 Expected: build exitoso.
 
 Run: `npm test`
-Expected: 32 archivos, 241 tests, verdes.
+Expected: 32 archivos, 244 tests, verdes.
 
 - [ ] **Step 4: Verificar a mano**
 
@@ -1606,7 +1618,7 @@ Run: `npm run build`
 Expected: build exitoso.
 
 Run: `npm test`
-Expected: 32 archivos, 241 tests, verdes.
+Expected: 32 archivos, 244 tests, verdes.
 
 - [ ] **Step 6: Verificar a mano**
 
@@ -1852,7 +1864,7 @@ import type { PricePointAdj, PriceSeriesByTicker, ExternalFlow } from '@/lib/ana
 - [ ] **Step 5: Correr los tests y verificar que pasan**
 
 Run: `npm test`
-Expected: **32 archivos, 246 tests, verdes.**
+Expected: **32 archivos, 249 tests, verdes.**
 
 - [ ] **Step 6: Commit**
 
@@ -2018,7 +2030,7 @@ En todas, insertar la línea justo después de `transactions: ...`. Los valores 
 - [ ] **Step 5: Correr los tests y verificar que pasan**
 
 Run: `npm test`
-Expected: **32 archivos, 251 tests, verdes.**
+Expected: **32 archivos, 254 tests, verdes.**
 
 Si `engine.test.ts` falla en el test viejo "P&L absoluto en raw: valor final − capital neto aportado", revisar que se le pasó `externalFlows: []` — su valor esperado sigue siendo 210.
 
@@ -2125,7 +2137,7 @@ Run: `npm run build`
 Expected: build exitoso.
 
 Run: `npm test`
-Expected: 32 archivos, 251 tests, verdes.
+Expected: 32 archivos, 254 tests, verdes.
 
 - [ ] **Step 6: Verificar a mano**
 
@@ -2194,7 +2206,7 @@ En `docs/superpowers/plans/ROADMAP.md`, en la fila `3.1` de la tabla del ciclo p
 - [ ] **Step 3: Verificación final completa**
 
 Run: `npm test`
-Expected: **32 archivos, 251 tests, verdes.**
+Expected: **32 archivos, 254 tests, verdes.**
 
 Run: `npm run lint`
 Expected: sin errores.
@@ -2218,11 +2230,11 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 | Después de la tarea | Archivos | Tests |
 |---|---|---|
 | (línea base) | 32 | 227 |
-| 1 — schemas | 32 | 235 |
-| 4 — invalidación | 32 | 236 |
-| 8 — `portfolioTotals` | 32 | 239 |
-| 9 — `computeSnapshotValue` | 32 | 241 |
-| 13 — `flowsToBaseCurrency` | 32 | 246 |
-| 14 — `netFlows` | 32 | 251 |
+| 1 — schemas | 32 | 238 |
+| 4 — invalidación | 32 | 239 |
+| 8 — `portfolioTotals` | 32 | 242 |
+| 9 — `computeSnapshotValue` | 32 | 244 |
+| 13 — `flowsToBaseCurrency` | 32 | 249 |
+| 14 — `netFlows` | 32 | 254 |
 
 Las tareas 2, 3, 5, 6, 7, 10, 11, 12, 15 y 16 no añaden tests: son rutas API delgadas, UI (el proyecto no tiene jsdom), SQL, o documentación. Su verificación es `npm run build`, la comprobación manual indicada en cada una, y el bloque de verificación de la migración.
