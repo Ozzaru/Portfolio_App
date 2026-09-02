@@ -13,9 +13,19 @@ import { createStore } from './store'
 const TTL = 30_000
 
 describe('INVALIDATES', () => {
-  it('una compra o venta ensucia posiciones, analítica, transacciones y activos', () => {
+  it('una compra o venta ensucia posiciones, analítica, transacciones, activos y caja', () => {
+    // La pata de caja del trade se PROYECTA desde `transactions` (0009 §3.2): no
+    // es una fila propia, así que escribir una transacción cambia `cash_balances`
+    // sin tocar ninguna tabla de caja. Si `/api/cash` faltara acá, una compra
+    // dejaría el saldo viejo en pantalla junto al patrimonio nuevo.
     expect(INVALIDATES.portfolio).toEqual(
-      expect.arrayContaining(['/api/positions', '/api/analytics', '/api/transactions', '/api/assets']),
+      expect.arrayContaining([
+        '/api/positions',
+        '/api/analytics',
+        '/api/transactions',
+        '/api/assets',
+        '/api/cash',
+      ]),
     )
   })
 
@@ -33,10 +43,11 @@ describe('INVALIDATES', () => {
   })
 
   it('un movimiento de caja ensucia el libro, las posiciones y la analítica', () => {
-    // No es sólo el libro: el efectivo entra en `total_value` (posiciones) y los
-    // abonos/retiros son los flujos externos con los que la analítica calcula el
-    // P&L absoluto. Dejar esas dos fuera mostraría un saldo nuevo junto a un
-    // patrimonio viejo.
+    // No es sólo el libro: el efectivo entrará en `total_value` (posiciones,
+    // desde la Tarea 10) y los abonos/retiros serán los flujos externos con los
+    // que la analítica calcule el P&L absoluto (desde la Tarea 15). Declarar el
+    // borde ahora es correcto aunque esas tareas todavía no existan; dejar estas
+    // dos fuera más adelante mostraría un saldo nuevo junto a un patrimonio viejo.
     expect(INVALIDATES.cash).toEqual(
       expect.arrayContaining(['/api/cash', '/api/positions', '/api/analytics']),
     )

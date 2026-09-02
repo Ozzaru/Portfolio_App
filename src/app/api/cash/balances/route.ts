@@ -9,6 +9,10 @@ import { requirePortfolio } from '@/lib/portfolio/context'
 //
 // OJO: un portafolio SIN movimientos no tiene fila. La respuesta es `[]`, y eso
 // significa saldo cero — no "error" ni "sin datos".
+//
+// Regla de la casa: un passthrough CRUD devuelve la fila cruda (movements,
+// transfers); una lectura agregada/derivada devuelve un DTO en camelCase (esta
+// ruta, y positions, analytics, portfolios, alerts). Esta es del segundo tipo.
 export async function GET(request: Request) {
   const supabase = await createClient()
   const {
@@ -22,7 +26,7 @@ export async function GET(request: Request) {
 
   const { data, error } = await supabase
     .from('cash_balances')
-    .select('currency, balance, last_movement_at')
+    .select('currency, balance')
     .eq('portfolio_id', ctx.id)
     .order('currency')
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -31,7 +35,6 @@ export async function GET(request: Request) {
     (data ?? []).map((r) => ({
       currency: r.currency as string,
       balance: Number(r.balance),
-      lastMovementAt: r.last_movement_at as string | null,
     }))
   )
 }

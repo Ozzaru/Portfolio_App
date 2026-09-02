@@ -26,12 +26,22 @@ export const INVALIDATES = {
 
   // Alta o baja de un activo o una transacción: cambia holdings, y con ellos
   // todo lo que se derive de la cartera.
-  portfolio: ['/api/positions', '/api/analytics', '/api/transactions', '/api/assets'],
+  //
+  // Incluye `/api/cash` porque la pata de caja del trade se PROYECTA desde la
+  // transacción (0009 §3.2): escribir una transacción cambia el saldo sin tocar
+  // ninguna tabla de caja. Sin esto, registrar una compra deja el saldo viejo en
+  // pantalla junto al patrimonio nuevo.
+  //
+  // La flecha va en un solo sentido, y por eso este mapa NO es simétrico: un
+  // movimiento de caja no ensucia transacciones ni activos, porque nada se
+  // proyecta de vuelta.
+  portfolio: ['/api/positions', '/api/analytics', '/api/transactions', '/api/assets', '/api/cash'],
 
   // Abono, retiro o conversión. El prefijo `/api/cash` alcanza de una vez a
   // movements, transfers y balances. Ensucia además posiciones y analítica: el
-  // efectivo entra en el patrimonio y los movimientos externos son los flujos
-  // con los que se calcula el P&L absoluto.
+  // efectivo entra en el patrimonio (desde la Tarea 10) y los movimientos
+  // externos son los flujos con los que se calcula el P&L absoluto (desde la
+  // Tarea 15).
   cash: ['/api/cash', '/api/positions', '/api/analytics'],
 } as const
 
