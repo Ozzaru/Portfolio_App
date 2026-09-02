@@ -5,6 +5,8 @@ import {
   transactionInputSchema,
   priceInputSchema,
   alertInputSchema,
+  cashMovementInputSchema,
+  fxTransferInputSchema,
 } from '@/lib/validation/schemas'
 
 const UUID = '00000000-0000-4000-8000-000000000000'
@@ -116,5 +118,81 @@ describe('alertInputSchema', () => {
   })
   it('rechaza assetId no-uuid', () => {
     expect(alertInputSchema.safeParse({ alertType: 'price_above', assetId: 'x', threshold: 1 }).success).toBe(false)
+  })
+})
+
+describe('cashMovementInputSchema', () => {
+  it('un retiro sale con monto NEGATIVO aunque se envíe la magnitud positiva', () => {
+    const r = cashMovementInputSchema.parse({
+      movementType: 'withdrawal',
+      amount: '50000',
+      currency: 'clp',
+      occurredAt: '2026-06-10',
+    })
+    expect(r.amount).toBe(-50000)
+    expect(r.currency).toBe('CLP')
+    expect(r.note).toBe('')
+  })
+
+  it('un abono conserva el signo positivo', () => {
+    const r = cashMovementInputSchema.parse({
+      movementType: 'deposit',
+      amount: 950000,
+      currency: 'CLP',
+      occurredAt: '2026-06-10',
+    })
+    expect(r.amount).toBe(950000)
+  })
+
+  it('rechaza monto cero: un movimiento que no mueve nada no significa nada', () => {
+    expect(
+      cashMovementInputSchema.safeParse({
+        movementType: 'deposit', amount: 0, currency: 'CLP', occurredAt: '2026-06-10',
+      }).success
+    ).toBe(false)
+  })
+
+  it('rechaza monto negativo: el signo lo pone el tipo, no el cliente', () => {
+    expect(
+      cashMovementInputSchema.safeParse({
+        movementType: 'withdrawal', amount: -50000, currency: 'CLP', occurredAt: '2026-06-10',
+      }).success
+    ).toBe(false)
+  })
+
+  it('rechaza un tipo que la base no admite', () => {
+    expect(
+      cashMovementInputSchema.safeParse({
+        movementType: 'dividend', amount: 100, currency: 'CLP', occurredAt: '2026-06-10',
+      }).success
+    ).toBe(false)
+  })
+})
+
+describe('fxTransferInputSchema', () => {
+  const base = {
+    toPortfolioId: UUID,
+    fromCurrency: 'clp',
+    fromAmount: '950000',
+    toCurrency: 'usd',
+    toAmount: '1000',
+    occurredAt: '2026-06-12',
+  }
+
+  it('acepta strings de formulario y normaliza ambas monedas', () => {
+    const r = fxTransferInputSchema.parse(base)
+    expect(r.fromCurrency).toBe('CLP')
+    expect(r.toCurrency).toBe('USD')
+    expect(r.fromAmount).toBe(950000)
+    expect(r.toAmount).toBe(1000)
+  })
+
+  it('rechaza montos no positivos en cualquiera de las dos patas', () => {
+    expect(fxTransferInputSchema.safeParse({ ...base, fromAmount: 0 }).success).toBe(false)
+    expect(fxTransferInputSchema.safeParse({ ...base, toAmount: -1 }).success).toBe(false)
+  })
+
+  it('rechaza una fecha que no sea YYYY-MM-DD', () => {
+    expect(fxTransferInputSchema.safeParse({ ...base, occurredAt: '12/06/2026' }).success).toBe(false)
   })
 })

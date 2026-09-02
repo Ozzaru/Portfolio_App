@@ -54,3 +54,52 @@ export const alertInputSchema = z.object({
   threshold: z.coerce.number().positive(),
 })
 export type AlertInput = z.infer<typeof alertInputSchema>
+
+// Movimiento de capital externo: abono o retiro.
+//
+// El cliente envía SIEMPRE una magnitud positiva y el tipo; el signo lo deriva
+// el transform. Si el cliente mandara el monto ya firmado, el tipo y el signo
+// serían dos fuentes de verdad para lo mismo y podrían contradecirse — el CHECK
+// `cash_movements_signo` lo rechazaría con un 500 opaco en vez de un 400 que
+// explique qué está mal.
+export const cashMovementInputSchema = z
+  .object({
+    movementType: z.enum(['deposit', 'withdrawal']),
+    amount: z.coerce.number().positive(),
+    currency: z
+      .string()
+      .trim()
+      .length(3)
+      .transform((c) => c.toUpperCase()),
+    occurredAt: z.string().regex(DATE_RE, 'formato esperado YYYY-MM-DD'),
+    note: z.string().trim().max(200).default(''),
+  })
+  .transform((m) => ({
+    ...m,
+    amount: m.movementType === 'withdrawal' ? -m.amount : m.amount,
+  }))
+export type CashMovementInput = z.infer<typeof cashMovementInputSchema>
+
+// Conversión de divisa entre portafolios. El portafolio de ORIGEN no viaja en el
+// body: es el del contexto (`?portfolio=`), igual que en todas las demás rutas.
+//
+// No hay campo de tasa: `fromAmount / toAmount` la da exacta, y una tercera
+// columna podría contradecir a las otras dos.
+export const fxTransferInputSchema = z.object({
+  toPortfolioId: z.string().uuid(),
+  fromCurrency: z
+    .string()
+    .trim()
+    .length(3)
+    .transform((c) => c.toUpperCase()),
+  fromAmount: z.coerce.number().positive(),
+  toCurrency: z
+    .string()
+    .trim()
+    .length(3)
+    .transform((c) => c.toUpperCase()),
+  toAmount: z.coerce.number().positive(),
+  occurredAt: z.string().regex(DATE_RE, 'formato esperado YYYY-MM-DD'),
+  note: z.string().trim().max(200).default(''),
+})
+export type FxTransferInput = z.infer<typeof fxTransferInputSchema>
