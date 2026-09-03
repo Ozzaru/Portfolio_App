@@ -750,8 +750,12 @@ const btnCls = 'rounded bg-blue-600 px-3 py-2 text-sm font-semibold text-white h
 export function CashSection({ portfolio }: { portfolio: string }) {
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  // El destino es controlado —a diferencia del resto de los campos— para que el
+  // placeholder del monto pueda nombrar su moneda. Cambiar el destino sin que el
+  // campo diga en qué moneda se escribe es como se invierten los dos montos.
+  const [toId, setToId] = useState('')
 
-  const { data: balancesData } = useResource<Balance[]>(`/api/cash/balances?portfolio=${portfolio}`)
+  const { data: balancesData, error: balancesError } = useResource<Balance[]>(`/api/cash/balances?portfolio=${portfolio}`)
   const { data: movementsData } = useResource<Movement[]>(`/api/cash/movements?portfolio=${portfolio}`)
   const { data: transfersData } = useResource<Transfer[]>(`/api/cash/transfers?portfolio=${portfolio}`)
   const { data: portfoliosData } = useResource<PortfolioRef[]>('/api/portfolios')
@@ -763,7 +767,13 @@ export function CashSection({ portfolio }: { portfolio: string }) {
 
   const current = portfolios.find((p) => p.slug === portfolio) ?? null
   const others = portfolios.filter((p) => p.slug !== portfolio)
+  const dest = others.find((p) => p.id === toId) ?? others[0] ?? null
   const baseCurrency = current?.baseCurrency ?? ''
+  // `[]` significa saldo cero SOLO si la lectura resolvió. Mientras carga, o si
+  // falló, `balancesData` es undefined y afirmar "saldo $0" sería inventar un
+  // número para un portafolio que puede tener plata de verdad. Y `baseCurrency`
+  // llega de otra petición: sin ella no hay moneda con la que formatear.
+  const balancesReady = balancesData !== undefined && baseCurrency !== ''
 
   // La guarda de envío en vuelo NO es cosmética acá. Un doble click en "Registrar
   // movimiento" crea dos abonos idénticos, y un abono duplicado es INDISTINGUIBLE
@@ -786,7 +796,17 @@ export function CashSection({ portfolio }: { portfolio: string }) {
       })
       if (!res.ok) {
         const data = await res.json().catch(() => null)
-        setError(typeof data?.error === 'string' ? data.error : 'Error de validación')
+        // Las rutas devuelven `flatten()`, que es un objeto {fieldErrors, formErrors}.
+        // Sin desarmarlo, cualquier fallo de validación se ve como un único
+        // "Error de validación" sin decir qué campo — inservible digitando cartolas.
+        const flat = data?.error
+        if (typeof flat === 'string') setError(flat)
+        else if (flat?.fieldErrors) {
+          const campos = Object.entries(flat.fieldErrors as Record<string, string[]>)
+            .map(([campo, msgs]) => `${campo}: ${msgs.join(', ')}`)
+            .join(' · ')
+          setError(campos || 'Error de validación')
+        } else setError('Error de validación')
         return false
       }
       invalidateAfter('cash')
@@ -797,7 +817,12 @@ export function CashSection({ portfolio }: { portfolio: string }) {
   }
 
   async function remove(url: string) {
-    await fetch(url, { method: 'DELETE' })
+    setError(null)
+    const res = await fetch(url, { method: 'DELETE' })
+    if (!res.ok) {
+      setError('No se pudo borrar')
+      return
+    }
     invalidateAfter('cash')
   }
 
@@ -806,29 +831,38 @@ export function CashSection({ portfolio }: { portfolio: string }) {
       <h2 className="text-lg font-semibold text-slate-200">Efectivo</h2>
       {error && <p className="text-sm text-red-400">{error}</p>}
 
-      {/* Saldos. Sin filas = saldo cero, no "sin datos". */}
+      {/* Saldos. Sin filas = saldo cero, pero SÓLO si la lectura resolvió. */}
+      {balancesError && (
+        <p className="text-sm text-red-400">
+          No se pudieron leer los saldos: {balancesError.message}
+        </p>
+      )}
       <div className="flex flex-wrap gap-3">
-        {balances.length === 0 && (
+        {!balancesError && !balancesReady && (
+          <div className="rounded-lg border border-slate-800 bg-slate-900 p-4 text-sm text-slate-500">
+            Cargando saldos…
+          </div>
+        )}
+        {balancesReady && balances.length === 0 && (
           <div className="rounded-lg border border-slate-800 bg-slate-900 p-4 text-sm text-slate-500">
             Sin movimientos registrados: saldo {formatMoney(0, baseCurrency)}.
           </div>
         )}
-        {balances.map((b) => (
-          <div key={b.currency} className="rounded-lg border border-slate-800 bg-slate-900 p-4">
-            <div className="text-xs uppercase tracking-wide text-slate-500">Saldo {b.currency}</div>
-            <div
-              className={`mt-1 text-2xl font-bold ${b.balance < 0 ? 'text-amber-400' : 'text-slate-100'}`}
-            >
-              {formatMoney(b.balance, b.currency)}
+        {balancesReady &&
+          balances.map((b) => (
+            <div key={b.currency} className="rounded-lg border border-slate-800 bg-slate-900 p-4">
+              <div className="text-xs uppercase tracking-wide text-slate-500">Saldo {b.currency}</div>
+              <div className={`mt-1 text-2xl font-bold ${b.balance < 0 ? 'text-amber-400' : 'text-slate-100'}`}>
+                {formatMoney(b.balance, b.currency)}
+              </div>
+              {b.balance < 0 && (
+                <p className="mt-2 max-w-xs text-xs text-amber-400">
+                  Faltan {formatMoney(-b.balance, b.currency)} por registrar. Agrega el abono que
+                  corresponda, o ignóralo si es margen del broker.
+                </p>
+              )}
             </div>
-            {b.balance < 0 && (
-              <p className="mt-2 max-w-xs text-xs text-amber-400">
-                Saldo negativo: falta registrar un abono, o el bróker te dio margen. No es un
-                error de la app — es plata que salió sin que entrara antes.
-              </p>
-            )}
-          </div>
-        ))}
+          ))}
       </div>
 
       {/* Abono / retiro */}
@@ -845,7 +879,14 @@ export function CashSection({ portfolio }: { portfolio: string }) {
             occurredAt: fd.get('occurredAt'),
             note: fd.get('note') ?? '',
           })
-          if (ok) form.reset()
+          if (ok) {
+            // La fecha se conserva: digitar una cartola son varias filas de la
+            // misma fecha, y resetearla obliga a reescribirla en cada una.
+            const keepDate = fd.get('occurredAt') as string
+            form.reset()
+            const dateInput = form.elements.namedItem('occurredAt') as HTMLInputElement | null
+            if (dateInput) dateInput.value = keepDate
+          }
         }}
       >
         <select name="movementType" required className={inputCls} defaultValue="deposit">
@@ -856,7 +897,7 @@ export function CashSection({ portfolio }: { portfolio: string }) {
           name="amount"
           type="number"
           step="any"
-          min="0"
+          min="0.01"
           placeholder="Monto (siempre positivo)"
           title="Escribe la magnitud; el signo lo pone el tipo de movimiento"
           required
@@ -878,9 +919,11 @@ export function CashSection({ portfolio }: { portfolio: string }) {
           className={inputCls}
           defaultValue={baseCurrency}
         >
-          {[...new Set(portfolios.map((p) => p.baseCurrency))].map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
+          {[...new Set([...portfolios.map((p) => p.baseCurrency), ...balances.map((b) => b.currency)])].map(
+            (c) => (
+              <option key={c} value={c}>{c}</option>
+            )
+          )}
         </select>
         <input name="occurredAt" type="date" required className={inputCls} />
         <input name="note" placeholder="Nota (opcional)" className={inputCls} />
@@ -895,9 +938,8 @@ export function CashSection({ portfolio }: { portfolio: string }) {
             e.preventDefault()
             const form = e.currentTarget
             const fd = new FormData(form)
-            const dest = portfolios.find((p) => p.id === fd.get('toPortfolioId'))
             const ok = await post(`/api/cash/transfers?portfolio=${portfolio}`, {
-              toPortfolioId: fd.get('toPortfolioId'),
+              toPortfolioId: dest?.id ?? '',
               fromCurrency: baseCurrency,
               fromAmount: fd.get('fromAmount'),
               toCurrency: dest?.baseCurrency ?? '',
@@ -905,19 +947,38 @@ export function CashSection({ portfolio }: { portfolio: string }) {
               occurredAt: fd.get('occurredAt'),
               note: fd.get('note') ?? '',
             })
-            if (ok) form.reset()
+            if (ok) {
+              // La fecha se conserva: digitar una cartola son varias filas de la
+              // misma fecha, y resetearla obliga a reescribirla en cada una.
+              const keepDate = fd.get('occurredAt') as string
+              form.reset()
+              const dateInput = form.elements.namedItem('occurredAt') as HTMLInputElement | null
+              if (dateInput) dateInput.value = keepDate
+            }
           }}
         >
           <input
             name="fromAmount"
             type="number"
             step="any"
-            min="0"
+            min="0.01"
             placeholder={`Sale (${baseCurrency})`}
             required
             className={inputCls}
           />
-          <select name="toPortfolioId" required className={inputCls} defaultValue={others[0]?.id}>
+          {/* Controlado, a diferencia del resto de los campos: el placeholder del
+              monto de llegada necesita leer la moneda del destino en cada render.
+              Cambiar el destino sin que el campo diga en qué moneda se escribe es
+              como se terminan invirtiendo los dos montos.
+              NO lleva `key` como el de moneda: el gate `others.length > 0` impide
+              que este select monte antes de que existan sus opciones. */}
+          <select
+            name="toPortfolioId"
+            required
+            className={inputCls}
+            value={dest?.id ?? ''}
+            onChange={(e) => setToId(e.target.value)}
+          >
             {others.map((p) => (
               <option key={p.id} value={p.id}>
                 → {p.name} ({p.baseCurrency})
@@ -928,8 +989,8 @@ export function CashSection({ portfolio }: { portfolio: string }) {
             name="toAmount"
             type="number"
             step="any"
-            min="0"
-            placeholder="Llega"
+            min="0.01"
+            placeholder={`Llega (${dest?.baseCurrency ?? ''})`}
             required
             className={inputCls}
           />
@@ -944,11 +1005,12 @@ export function CashSection({ portfolio }: { portfolio: string }) {
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-slate-800 text-xs uppercase text-slate-500">
-              <th className="py-2">Fecha</th>
+              <th className="py-2"></th>
+              <th>Fecha</th>
               <th className="text-right">Sale</th>
               <th className="text-right">Llega</th>
-              <th className="text-right">Tasa</th>
-              <th className="text-right">Mercado</th>
+              <th className="text-right">Tasa (CLP/USD)</th>
+              <th className="text-right">Mercado (CLP/USD)</th>
               <th className="text-right">Costo spread</th>
               <th></th>
             </tr>
@@ -956,7 +1018,17 @@ export function CashSection({ portfolio }: { portfolio: string }) {
           <tbody>
             {transfers.map((t) => (
               <tr key={t.id} className="border-b border-slate-900">
-                <td className="py-2">{t.occurred_at}</td>
+                {/* De qué lado estás: la MISMA fila se ve desde los dos
+                    portafolios, y sin esto un abono en dólares se lee como una
+                    salida de pesos que en este portafolio nunca ocurrió. */}
+                <td className="py-2">
+                  {t.from_portfolio_id === current?.id ? (
+                    <span className="text-red-400" title="Sale de este portafolio">↑</span>
+                  ) : (
+                    <span className="text-green-400" title="Entra a este portafolio">↓</span>
+                  )}
+                </td>
+                <td>{t.occurred_at}</td>
                 <td className="text-right">{formatMoney(Number(t.from_amount), t.from_currency)}</td>
                 <td className="text-right">{formatMoney(Number(t.to_amount), t.to_currency)}</td>
                 <td className="text-right">
@@ -965,14 +1037,28 @@ export function CashSection({ portfolio }: { portfolio: string }) {
                 <td className="text-right text-slate-500">
                   {t.clp_por_usd_mercado === null ? '—' : Number(t.clp_por_usd_mercado).toFixed(2)}
                 </td>
-                <td className="text-right text-amber-400">
+                {/* Ámbar SÓLO cuando el broker te cobró. El valor es negativo si
+                    convertiste mejor que el mercado, y pintar un ahorro como
+                    advertencia gasta el único color que arriba significa "actúa". */}
+                <td
+                  className={`text-right ${
+                    t.costo_spread_clp !== null && Number(t.costo_spread_clp) > 0
+                      ? 'text-amber-400'
+                      : 'text-slate-300'
+                  }`}
+                  title={
+                    t.costo_spread_clp === null
+                      ? 'Sin tipo de cambio de mercado para esa fecha — refresca precios en Fuentes de datos'
+                      : undefined
+                  }
+                >
                   {t.costo_spread_clp === null ? '—' : formatMoney(Number(t.costo_spread_clp), 'CLP')}
                 </td>
                 <td className="text-right">
                   <button
                     onClick={() => remove(`/api/cash/transfers/${t.id}`)}
                     className="text-slate-600 hover:text-red-400"
-                    title="Borrar la conversión y sus dos patas"
+                    title="Borrar la conversión y sus dos patas (afecta a ambos portafolios)"
                   >
                     ✕
                   </button>
